@@ -12,8 +12,10 @@ import random
 from datetime import datetime
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
+# Security: Load secret key from environment variable
+app.config['SECRET_KEY'] = os.getenv('CHATLOOM_SECRET_KEY', 'dev-secret-key-123')
 CORS(app)
+# In production, replace "*" with your specific frontend domain (e.g., https://chatloom.pages.dev)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
@@ -39,6 +41,15 @@ def get_ollama_models(base_url=OLLAMA_URL):
     except:
         return []
     return []
+
+def get_setting(key, default=None):
+    try:
+        conn = get_db_connection()
+        row = conn.execute('SELECT value FROM settings WHERE key = ?', (key,)).fetchone()
+        conn.close()
+        return row['value'] if row else default
+    except:
+        return default
 
 @app.route('/api/detect-llm', methods=['GET'])
 def detect_llm():
@@ -281,20 +292,13 @@ def handle_llm_action(data):
         "action": data.get('action')
     }, room=room_id, include_self=True)
 
-def llm_introduce(sid, room_id):
-    if room_id not in active_rooms: return
-    llm_info = active_rooms[room_id]['active_llms'].get(sid)
-    if not llm_info: return
-    
-    persona = llm_info['persona']
-    base_prompt = persona.get('base_prompt', 'You are a helpful explorer.')
-    
-    system_instruction = (
-        f"You are {llm_info['name']}. Your character: {base_prompt}. "
+    system_template = get_setting("system_intro", (
+        "You are {name}. Your character: {base_prompt}. "
         "IMPORTANT: You are in a chat room. Do NOT mention you are an AI assistant or a language model. "
-        "Stay strictly in character. Keep responses brief but ALWAYS ensure your thought is complete and the sentence is finished."
-    )
+        "Stay strictly in character."
+    ))
     
+    system_instruction = system_template.format(name=llm_info['name'], base_prompt=base_prompt)
     prompt = f"Topic: '{room_id}'. The conversation is just starting. Introduce yourself briefly to the group consistent with your persona."
     
     # Delegate generation to the client's browser
@@ -384,22 +388,19 @@ def llm_participate(room_id, last_message, turn=1, max_turns=10, target_sid=None
         chosen_sid = random.choice(list(active_llms.keys()))
         
     llm_info = active_llms[chosen_sid]
-    persona = llm_info['persona']
-    base_prompt = persona.get('base_prompt', 'You are a helpful explorer.')
-    is_tagged = target_sid == chosen_sid
+    system_template = get_setting("system_participate", (
+        "You are {name}. Your character: {base_prompt}."
+    ))
     
-    system_instruction = (
-        f"You are {llm_info['name']}. Your character: {base_prompt}. "
-        "IMPORTANT: You are in a chat room. Do NOT mention you are an AI assistant or a language model. "
-        "Stay strictly in character. Use short, conversational responses. "
-        "ALWAYS finish your sentence and provide a complete thought - do not cut off mid-way."
+    system_instruction = system_template.format(name=llm_info['name'], base_prompt=base_prompt)
+    
+    prompt_template = get_setting("prompt_wrapper", "{last_message}")
+    prompt = prompt_template.format(
+        room_id=room_id,
+        tagged="Yes" if is_tagged else "No",
+        last_message=last_message,
+        name=llm_info['name']
     )
-    
-    context = f"Internal Chat in '#{room_id}'. "
-    if is_tagged:
-        context += f"Someone specifically tagged you (@{llm_info['name']}). "
-    
-    prompt = f"[Context: {context}] Last Message: '{last_message}'. Respond consistent with your persona."
     
     # Update activity to prevent double pulse during generation
     if room_id in active_rooms:

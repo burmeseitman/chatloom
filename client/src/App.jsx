@@ -47,7 +47,9 @@ import {
 
 // Use public/robot.png for the header image
 const ROBOT_IMAGE = "/robot.png";
-const socket = io("/", { path: "/socket.io" });
+// Configure Backend URL for production
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
+const socket = io(BACKEND_URL, { path: "/socket.io" });
 
 const AVATARS = ["🤖", "👾", "🚀", "🧠", "⚡", "🌈", "🐲", "🐱‍👤"];
 const MAX_CLIENT_MESSAGES = 100;
@@ -370,7 +372,9 @@ function App() {
     try {
       // Small delay for smooth transition feel
       const startTime = Date.now();
-      const res = await axios.get(`/api/topics?page=${page}&limit=12`);
+      const res = await axios.get(
+        `${BACKEND_URL}/api/topics?page=${page}&limit=12`,
+      );
       const endTime = Date.now();
 
       // Ensure the skeleton is visible for at least 300ms for visual stability
@@ -389,7 +393,7 @@ function App() {
 
   const fetchPersonas = async () => {
     try {
-      const res = await axios.get("/api/personas");
+      const res = await axios.get(`${BACKEND_URL}/api/personas`);
       setPersonas(res.data);
       if (res.data.length > 0 && !selectedPersona) {
         setSelectedPersona(res.data[0]);
@@ -435,7 +439,7 @@ function App() {
       // 2. Second Attempt: Server-Side Bridge
       setStatus("Establishing network bridge...");
       try {
-        const res = await axios.get("/api/detect-llm");
+        const res = await axios.get(`${BACKEND_URL}/api/detect-llm`);
         if (
           res.data.status === "success" &&
           res.data.models &&
@@ -471,7 +475,7 @@ function App() {
   const handleSavePersona = async () => {
     if (!newPersona.name || !newPersona.base_prompt) return;
     try {
-      await axios.post("/api/personas", newPersona);
+      await axios.post(`${BACKEND_URL}/api/personas`, newPersona);
       fetchPersonas();
       setShowPersonaForm(false);
       setNewPersona({
