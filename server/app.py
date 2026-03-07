@@ -3,12 +3,12 @@ eventlet.monkey_patch()
 
 import os
 import requests
+import sqlite3
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_cors import CORS
 import time
 import random
-import csv
 from datetime import datetime
 
 app = Flask(__name__)
@@ -17,37 +17,24 @@ CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
 
-def get_ollama_models():
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def get_ollama_models(base_url=OLLAMA_URL):
     try:
-        # Check if Ollama is even alive first
-        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=2)
+        response = requests.get(f"{base_url}/api/tags", timeout=3)
         if response.status_code == 200:
             models = response.json().get('models', [])
             suitable_models = []
             for m in models:
-                name = m.get('name')
-                details = m.get('details', {})
-                param_size = details.get('parameter_size', "")
-                
-                try:
-                    is_small = True
-                    if param_size:
-                        size_str = param_size.lower().replace('b', '')
-                        # Try to handle cases like "7.2B" or "8B"
-                        if float(size_str.split(' ')[0]) > 9:
-                            is_small = False
-                    
-                    if is_small:
-                        suitable_models.append({
-                            "name": name,
-                            "parameter_size": param_size or "Unknown"
-                        })
-                except:
-                    suitable_models.append({
-                        "name": name,
-                        "parameter_size": "Unknown"
-                    })
+                suitable_models.append({
+                    "name": m.get('name'),
+                    "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')
+                })
             return suitable_models
     except:
         return []
@@ -55,43 +42,87 @@ def get_ollama_models():
 
 @app.route('/api/detect-llm', methods=['GET'])
 def detect_llm():
-    models = get_ollama_models()
-    return jsonify({
-        "status": "success" if models else "failed",
-        "models": models
-    })
+    """Strictly detect models for the CURRENT PC only."""
+    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    if client_ip and ',' in client_ip:
+        client_ip = client_ip.split(',')[0].strip()
+    
+    # Strip IPv6-mapped IPv4 prefix
+    if client_ip and client_ip.startswith('::ffff:'):
+        client_ip = client_ip.replace('::ffff:', '')
+        
+    print(f"--- Detection Start ---")
+    print(f"Requester IP: {client_ip}")
 
-# Global state
-rooms = {} # room_id -> { active_llms: {sid: info}, history: [], topic: str }
-all_topics = []
+    # Case 1: Requester is the Main Server PC
+    if not client_ip or client_ip in ['127.0.0.1', 'localhost', '::1']:
+        print("Action: Scanning Main PC (Local)")
+        models = get_ollama_models(OLLAMA_URL)
+        return jsonify({
+            "status": "success" if models else "error",
+            "models": models,
+            "origin": "Main PC"
+        })
 
-def load_topics():
-    global all_topics
+    # Case 2: Requester is a Remote PC
+    print(f"Action: Scanning Client PC at {client_ip}")
+    remote_url = f"http://{client_ip}:11434"
     try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        csv_path = os.path.join(script_dir, 'topics.csv')
-        with open(csv_path, 'r') as f:
-            reader = csv.DictReader(f)
-            all_topics = [row['topic'] for row in reader]
+        # We use a slightly longer timeout for remote network detection
+        response = requests.get(f"{remote_url}/api/tags", timeout=5)
+        if response.status_code == 200:
+            models = response.json().get('models', [])
+            suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models]
+            print(f"Success: Found {len(suitable)} models at {client_ip}")
+            return jsonify({
+                "status": "success",
+                "models": suitable,
+                "origin": "Remote Node"
+            })
     except Exception as e:
-        print(f"Error loading topics: {e}")
-        all_topics = ["General Chat", "AI Future", "Robotics"]
+        print(f"Failure: Could not reach {remote_url}. Error: {str(e)}")
+    
+    return jsonify({
+        "status": "error",
+        "message": f"Could not detect Ollama at {client_ip}. If yours is PC-B, ensure Ollama is listening on the network.",
+        "models": [],
+        "detected_ip": client_ip
+    }), 404
 
-load_topics()
+@app.route('/api/personas', methods=['GET', 'POST'])
+def handle_personas():
+    conn = get_db_connection()
+    if request.method == 'POST':
+        data = request.json
+        conn.execute('INSERT INTO personas (name, avatar, description, base_prompt) VALUES (?, ?, ?, ?)',
+                    (data['name'], data['avatar'], data.get('description', ''), data['base_prompt']))
+        conn.commit()
+        conn.close()
+        return jsonify({"status": "success"})
+    
+    rows = conn.execute('SELECT * FROM personas ORDER BY id DESC').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+# Global state for ACTIVE connections only
+active_rooms = {}
 
 @app.route('/api/topics', methods=['GET'])
 def get_topics():
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 12))
-    start_idx = (page - 1) * limit
-    end_idx = start_idx + limit
+    offset = (page - 1) * limit
     
-    paginated_topics = all_topics[start_idx:end_idx]
+    conn = get_db_connection()
+    topics_rows = conn.execute('SELECT name FROM topics LIMIT ? OFFSET ?', (limit, offset)).fetchall()
+    total_count = conn.execute('SELECT COUNT(*) FROM topics').fetchone()[0]
+    conn.close()
     
     results = []
-    for topic_name in paginated_topics:
-        # Get active count for this room
-        room_info = rooms.get(topic_name, {})
+    for row in topics_rows:
+        topic_name = row['name']
+        # Get active count from memory state
+        room_info = active_rooms.get(topic_name, {})
         active_count = len(room_info.get('active_llms', {}))
         results.append({
             "name": topic_name,
@@ -100,173 +131,305 @@ def get_topics():
         
     return jsonify({
         "topics": results,
-        "total": len(all_topics),
+        "total": total_count,
         "page": page,
         "limit": limit
     })
 
 def add_to_history(room_id, msg_type, data):
-    if room_id not in rooms: return
-    history = rooms[room_id]['history']
-    if "timestamp" not in data:
-        data["timestamp"] = datetime.now().strftime("%H:%M:%S")
-    history.append({"type": msg_type, "data": data})
-    if len(history) > 50:
-        history.pop(0)
+    conn = get_db_connection()
+    timestamp = data.get("timestamp") or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute('''
+        INSERT INTO messages (room_id, sender, avatar, text, msg_type, is_llm, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''', (
+        room_id,
+        data.get("sender", "SYSTEM"),
+        data.get("avatar", ""),
+        data.get("text", ""),
+        msg_type,
+        1 if data.get("is_llm") else 0,
+        timestamp
+    ))
+    conn.commit()
+    conn.close()
+
+def get_room_history(room_id):
+    conn = get_db_connection()
+    rows = conn.execute('''
+        SELECT sender, avatar, text, msg_type, is_llm, timestamp 
+        FROM messages WHERE room_id = ? 
+        ORDER BY id ASC LIMIT 50
+    ''', (room_id,)).fetchall()
+    conn.close()
+    
+    history = []
+    for r in rows:
+        history.append({
+            "type": r['msg_type'],
+            "data": {
+                "sender": r['sender'],
+                "avatar": r['avatar'],
+                "text": r['text'],
+                "is_llm": bool(r['is_llm']),
+                "timestamp": r['timestamp'],
+                "isSystem": r['msg_type'] == 'system'
+            }
+        })
+    return history
 
 def broadcast_llm_list(room_id):
-    if room_id not in rooms: return
-    active_llms = rooms[room_id]['active_llms']
+    if room_id not in active_rooms: return
+    active_llms = active_rooms[room_id]['active_llms']
     llm_list = [
-        {"name": info["name"], "avatar": info["avatar"], "model": info["model"]} 
+        {
+            "name": info["name"], 
+            "avatar": info["avatar"], 
+            "model": info["model"],
+            "action": info.get("action", "idle")
+        } 
         for info in active_llms.values()
     ]
+    print(f"DEBUG: Broadcasting {len(llm_list)} participants to #{room_id}")
     socketio.emit('update_participants', llm_list, room=room_id)
 
 @socketio.on('join')
 def handle_join(data):
-    # data: { name, avatar, model, session_id, room_id }
     name = data.get('name')
     model = data.get('model')
-    avatar = data.get('avatar')
+    avatar = data.get('avatar', '🤖')
     session_id = data.get('session_id')
     room_id = data.get('room_id', 'General Chat')
+    persona = data.get('persona', {})
+
+    if room_id not in active_rooms:
+        active_rooms[room_id] = {
+            'active_llms': {},
+            'last_activity': time.time(),
+            'last_message': f"Room '{room_id}' created."
+        }
+        # Start a background autonomous pulse for this room
+        socketio.start_background_task(neural_pulse, room_id)
     
+    # Nickname uniqueness check
+    for sid, info in active_rooms[room_id]['active_llms'].items():
+        if info['name'] == name and info['session_id'] != session_id:
+            emit('join_error', {'message': f"ID '{name}' is occupied."})
+            return
+
     join_room(room_id)
     
-    if room_id not in rooms:
-        rooms[room_id] = {'active_llms': {}, 'history': [], 'topic': room_id}
-    
-    room_info = rooms[room_id]
-    active_llms = room_info['active_llms']
-    
-    # DEDUPLICATION: Remove old entries with the same session_id in this room
-    to_remove = [sid for sid, info in active_llms.items() if info.get('session_id') == session_id]
-    for sid in to_remove:
-        del active_llms[sid]
+    # Cleanup old session SIDs
+    old_sids = [sid for sid, info in active_rooms[room_id]['active_llms'].items() if info.get('session_id') == session_id]
+    for osid in old_sids:
+        if osid in active_rooms[room_id]['active_llms']:
+            del active_rooms[room_id]['active_llms'][osid]
 
-    active_llms[request.sid] = {
-        "name": name,
-        "model": model,
-        "avatar": avatar,
+    active_rooms[room_id]['active_llms'][request.sid] = {
+        "name": name, 
+        "model": model, 
+        "avatar": avatar, 
+        "persona": persona,
         "session_id": session_id,
-        "room_id": room_id
+        "action": "idle"
     }
     
-    sys_msg = {
-        "text": f"SYSTEM: {name} (LLM: {model}) has joined #{room_id}!",
-        "type": "join"
-    }
+    sys_msg = {"text": f"SYSTEM: {name} (AI Guardian) has joined the discussion.", "type": "join"}
     socketio.emit('system_message', sys_msg, room=room_id)
     add_to_history(room_id, 'system', sys_msg)
     
-    # Send history specifically to the joining client
-    socketio.emit('chat_history', room_info['history'], to=request.sid)
-    
+    history = get_room_history(room_id)
+    socketio.emit('chat_history', history, to=request.sid)
     broadcast_llm_list(room_id)
-    
-    # Simple intro
     socketio.start_background_task(llm_introduce, request.sid, room_id)
 
+def neural_pulse(room_id):
+    """The autonomous heartbeat - now much more conservative for slow hardware."""
+    print(f"DEBUG: Neural Pulse started for #{room_id}")
+    while room_id in active_rooms:
+        socketio.sleep(30) # Check every 30 seconds
+        
+        room = active_rooms.get(room_id)
+        if not room: break
+        
+        # Check if anyone is already thinking - if so, don't pulse
+        is_anyone_busy = any(p.get('action') == 'thinking' for p in room['active_llms'].values())
+        
+        # If quiet for too long, no one is busy, and AIs are present
+        quiet_duration = time.time() - room['last_activity']
+        if quiet_duration > 40 and not is_anyone_busy and room['active_llms']:
+            print(f"DEBUG: Room #{room_id} is very quiet. Spurring short AI chat.")
+            socketio.start_background_task(llm_participate, room_id, room['last_message'], turn=1, max_turns=3)
+
+@socketio.on('llm_action')
+def handle_llm_action(data):
+    room_id = data.get('room_id')
+    if not room_id: return
+    
+    # Update activity and persistent state
+    if room_id in active_rooms:
+        active_rooms[room_id]['last_activity'] = time.time()
+        # Find the participant and update their action persistently
+        for sid, info in active_rooms[room_id]['active_llms'].items():
+            if info['name'] == data.get('name'):
+                info['action'] = data.get('action')
+                break
+        
+    # Broadcast to everyone in the room
+    emit('llm_action', {
+        "name": data.get('name'),
+        "action": data.get('action')
+    }, room=room_id, include_self=True)
+
 def llm_introduce(sid, room_id):
-    if room_id not in rooms: return
-    llm_info = rooms[room_id]['active_llms'].get(sid)
+    if room_id not in active_rooms: return
+    llm_info = active_rooms[room_id]['active_llms'].get(sid)
     if not llm_info: return
     
-    socketio.emit('llm_action', {"name": llm_info['name'], "action": "thinking"}, room=room_id)
-    prompt = f"You are {llm_info['name']}, an AI participating in an IRC chat room about '{room_id}'. Introduce yourself briefly and share a thought on this topic. Keep it short and friendly."
+    persona = llm_info['persona']
+    base_prompt = persona.get('base_prompt', 'You are a helpful explorer.')
     
-    socketio.sleep(1)
-    response = call_ollama(llm_info['model'], prompt)
-    socketio.emit('llm_action', {"name": llm_info['name'], "action": "idle"}, room=room_id)
+    system_instruction = (
+        f"You are {llm_info['name']}. Your character: {base_prompt}. "
+        "IMPORTANT: You are in a chat room. Do NOT mention you are an AI assistant or a language model. "
+        "Stay strictly in character. Keep responses brief but ALWAYS ensure your thought is complete and the sentence is finished."
+    )
     
+    prompt = f"Topic: '{room_id}'. The conversation is just starting. Introduce yourself briefly to the group consistent with your persona."
+    
+    # Delegate generation to the client's browser
+    socketio.emit('request_generation', {
+        "system": system_instruction,
+        "prompt": prompt,
+        "model": llm_info['model'],
+        "room_id": room_id,
+        "metadata": {
+            "turn": 1,
+            "max_turns": 10
+        }
+    }, to=sid)
+
+@socketio.on('llm_response')
+def handle_llm_response(data):
+    room_id = data.get('room_id')
+    text = data.get('text')
+    metadata = data.get('metadata', {"turn": 1, "max_turns": 10})
+    
+    if room_id not in active_rooms: return
+    llm_info = active_rooms[room_id]['active_llms'].get(request.sid)
+    if not llm_info: return
+
+    # Update activity
+    active_rooms[room_id]['last_activity'] = time.time()
+    active_rooms[room_id]['last_message'] = text
+
     msg_data = {
         "sender": llm_info['name'],
         "avatar": llm_info['avatar'],
-        "text": response,
-        "is_llm": True
+        "text": text,
+        "is_llm": True,
+        "time": datetime.now().strftime('%H:%M:%S')
     }
     socketio.emit('chat_message', msg_data, room=room_id)
     add_to_history(room_id, 'chat', msg_data)
 
-def call_ollama(model, prompt):
-    try:
-        payload = {"model": model, "prompt": prompt, "stream": False}
-        response = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=60)
-        return response.json().get('response', "I am currently speechless.")
-    except Exception as e:
-        return f"Error connecting to LLM: {str(e)}"
+    # Trigger next AI turn (discussion chain)
+    turn = metadata.get('turn', 1)
+    max_turns = metadata.get('max_turns', 10)
+    
+    if turn < max_turns and random.random() > 0.3:
+        # Avoid same AI talking to itself instantly
+        socketio.sleep(random.randint(2, 5))
+        socketio.start_background_task(llm_participate, room_id, text, turn=turn + 1, max_turns=max_turns)
 
 @socketio.on('message')
 def handle_message(data):
-    # data: { text, sender, room_id }
     text = data.get('text', '')
     sender = data.get('sender', 'Human')
     room_id = data.get('room_id')
-    
     if not room_id: return
 
-    msg_data = {
-        "sender": sender,
-        "text": text,
-        "is_llm": False,
-        "avatar": "👤"
-    }
+    # Update activity
+    if room_id in active_rooms:
+        active_rooms[room_id]['last_activity'] = time.time()
+        active_rooms[room_id]['last_message'] = text
+
+    msg_data = {"sender": sender, "text": text, "is_llm": False, "avatar": "🛡️"}
     socketio.emit('chat_message', msg_data, room=room_id)
     add_to_history(room_id, 'chat', msg_data)
     
-    # Trigger LLM reactions in that room
-    if room_id in rooms and rooms[room_id]['active_llms']:
-        socketio.start_background_task(llm_participate, room_id, text)
+    if room_id in active_rooms and active_rooms[room_id]['active_llms']:
+        # Check if someone was tagged
+        tagged_name = None
+        if "@" in text:
+            for sid, info in active_rooms[room_id]['active_llms'].items():
+                if f"@{info['name']}" in text:
+                    tagged_name = info['name']
+                    socketio.start_background_task(llm_participate, room_id, text, target_sid=sid, max_turns=10)
+                    return
+        
+        # If no one specifically tagged, random AI might still jump in
+        socketio.start_background_task(llm_participate, room_id, text, max_turns=10)
 
-def llm_participate(room_id, last_message, turn=1, max_turns=3):
-    if room_id not in rooms or not rooms[room_id]['active_llms'] or turn > max_turns:
+def llm_participate(room_id, last_message, turn=1, max_turns=10, target_sid=None):
+    if room_id not in active_rooms or not active_rooms[room_id]['active_llms'] or turn > max_turns:
         return
     
-    active_llms = rooms[room_id]['active_llms']
-    participants = list(active_llms.keys())
-    chosen_sid = random.choice(participants)
+    active_llms = active_rooms[room_id]['active_llms']
+    if target_sid and target_sid in active_llms:
+        chosen_sid = target_sid
+    else:
+        # Autonomous Pulse skips the random silence chance if it's the starter
+        if turn == 1 and random.random() > 0.9: return 
+        chosen_sid = random.choice(list(active_llms.keys()))
+        
     llm_info = active_llms[chosen_sid]
+    persona = llm_info['persona']
+    base_prompt = persona.get('base_prompt', 'You are a helpful explorer.')
+    is_tagged = target_sid == chosen_sid
     
-    socketio.emit('llm_action', {"name": llm_info['name'], "action": "thinking"}, room=room_id)
+    system_instruction = (
+        f"You are {llm_info['name']}. Your character: {base_prompt}. "
+        "IMPORTANT: You are in a chat room. Do NOT mention you are an AI assistant or a language model. "
+        "Stay strictly in character. Use short, conversational responses. "
+        "ALWAYS finish your sentence and provide a complete thought - do not cut off mid-way."
+    )
     
-    prompt = f"Topic: {room_id}. Message: '{last_message}'. As {llm_info['name']}, respond briefly and insightfully. Keep context."
+    context = f"Internal Chat in '#{room_id}'. "
+    if is_tagged:
+        context += f"Someone specifically tagged you (@{llm_info['name']}). "
     
-    socketio.sleep(random.randint(2, 5))
-    response = call_ollama(llm_info['model'], prompt)
-    socketio.emit('llm_action', {"name": llm_info['name'], "action": "idle"}, room=room_id)
+    prompt = f"[Context: {context}] Last Message: '{last_message}'. Respond consistent with your persona."
     
-    msg_data = {
-        "sender": llm_info['name'],
-        "avatar": llm_info['avatar'],
-        "text": response,
-        "is_llm": True
-    }
-    socketio.emit('chat_message', msg_data, room=room_id)
-    add_to_history(room_id, 'chat', msg_data)
+    # Update activity to prevent double pulse during generation
+    if room_id in active_rooms:
+        active_rooms[room_id]['last_activity'] = time.time()
+ 
+    # Delegate generation to the client's browser
+    socketio.emit('request_generation', {
+        "system": system_instruction,
+        "prompt": prompt,
+        "model": llm_info['model'],
+        "room_id": room_id,
+        "metadata": {
+            "turn": turn,
+            "max_turns": max_turns
+        }
+    }, to=chosen_sid)
 
-    if turn < max_turns and random.random() > 0.3:
-        socketio.start_background_task(llm_participate, room_id, response, turn + 1, max_turns)
+    # Note: Recursive chains (max_turns) will be triggered when the server receives the 'llm_response'
+    # To keep simplicity, we'll handle recursion in llm_response if needed.
 
 @socketio.on('leave')
 def handle_leave(data=None):
-    # Some older calls might not pass data
-    room_id = data.get('room_id') if data else None
-    
-    # Find which room this sid is in if room_id not provided
-    sids_to_check = [request.sid]
-    
-    for rid, info in list(rooms.items()):
+    # Search rooms to find the participant by sid
+    for rid, info in list(active_rooms.items()):
         if request.sid in info['active_llms']:
             llm_info = info['active_llms'][request.sid]
             name = llm_info['name']
             del info['active_llms'][request.sid]
             leave_room(rid)
-            
-            sys_msg = {
-                "text": f"SYSTEM: {name} has left #{rid}.",
-                "type": "leave"
-            }
+            sys_msg = {"text": f"SYSTEM: {name} disconnected.", "type": "leave"}
             socketio.emit('system_message', sys_msg, room=rid)
             add_to_history(rid, 'system', sys_msg)
             broadcast_llm_list(rid)
@@ -275,11 +438,5 @@ def handle_leave(data=None):
 def handle_disconnect():
     handle_leave()
 
-@app.route('/api/status', methods=['GET'])
-def server_status():
-    return jsonify({"status": "healthy", "rooms": len(rooms)})
-
 if __name__ == '__main__':
-    # We'll remove the global topic_pusher for now to keep it simple, 
-    # as discussion happens per room when someone (human or bot) starts it.
     socketio.run(app, host='0.0.0.0', port=5001, debug=True)
