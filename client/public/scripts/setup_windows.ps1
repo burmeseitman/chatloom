@@ -43,7 +43,6 @@ if (-not $OLLAMA_FOUND) {
 Write-Host "This script will CONFIGURE your existing Ollama for ChatLoom:" -ForegroundColor White
 Write-Host " 1. Inject Security Layers (OLLAMA_ORIGINS)" -ForegroundColor White
 Write-Host " 2. Enable Local Networking (OLLAMA_HOST)" -ForegroundColor White
-Write-Host " 3. Synchronize AI Brain (llama3.2:1b)" -ForegroundColor White
 Write-Host ""
 
 $mainChoice = Read-Host "❓ Proceed with secure configuration? (y/n)"
@@ -87,7 +86,7 @@ Try {
     Write-Host "⏳ Waiting for Ollama (15s)..." -ForegroundColor Gray
     Start-Sleep -Seconds 15
 
-    Write-Host "🧠  Synchronizing AI Brain (llama3.2:1b)..." -ForegroundColor Magenta
+    Write-Host "🔗 Verifying secure bridge..." -ForegroundColor Magenta
     
     # Wait for API to be ready
     $maxRetries = 10
@@ -106,9 +105,6 @@ Try {
             $retryCount++
         }
     }
-
-    # Ensure model integrity
-    ollama pull llama3.2:1b
 
     Write-Host ""
     Write-Host " ✅ Configuration successful!" -ForegroundColor Green

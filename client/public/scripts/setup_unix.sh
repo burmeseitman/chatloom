@@ -43,7 +43,6 @@ fi
 echo "This script will CONFIGURE your existing Ollama for ChatLoom:"
 echo " 1. Inject Security Layers (OLLAMA_ORIGINS)"
 echo " 2. Enable Local Networking (OLLAMA_HOST)"
-echo " 3. Synchronize AI Brain (llama3.2:1b)"
 echo ""
 printf "❓ Proceed with secure configuration? (y/n): "
 read main_choice < /dev/tty
@@ -110,13 +109,13 @@ else
     sleep 5
 fi
 
-# --- Model Synchronization ---
-echo "🧠 Synchronizing AI Brain (llama3.2:1b)..."
+# --- Connection Check ---
+echo "🔗 Verifying secure bridge..."
 MAX_RETRIES=10
 RETRY_COUNT=0
 while ! curl -s http://localhost:11434/api/tags > /dev/null; do
     if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        echo "❌ Connection timed out. Ensure Ollama is running in your Menu Bar."
+        echo "❌ Connection timed out. Ensure Ollama is running in your Menu Bar/System Tray."
         exit 1
     fi
     echo "⏳ Waiting for API ($((RETRY_COUNT+1))/$MAX_RETRIES)..."
@@ -124,7 +123,6 @@ while ! curl -s http://localhost:11434/api/tags > /dev/null; do
     RETRY_COUNT=$((RETRY_COUNT+1))
 done
 
-$OLLAMA_BIN pull llama3.2:1b
 echo "✅ Configuration successful!"
 echo ""
 echo "------------------------------------------"
