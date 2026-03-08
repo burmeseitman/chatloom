@@ -101,7 +101,12 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     # On Mac, check if app is running, if not open it
     if ! pgrep -x "Ollama" > /dev/null; then
         echo "🚀 Starting Ollama application..."
-        open -a Ollama
+        if [ -d "/Applications/Ollama.app" ]; then
+            open "/Applications/Ollama.app"
+        else
+            # Fallback for older brew versions or manual installs elsewhere
+            open -a Ollama || echo "⚠️  Could not start Ollama GUI. Please start it manually."
+        fi
         echo "⏳ Waiting for Ollama to initialize (10s)..."
         sleep 10
     fi

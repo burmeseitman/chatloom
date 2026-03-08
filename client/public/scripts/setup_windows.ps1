@@ -27,14 +27,32 @@ Write-Host ""
 
 # --- Ollama Check & Install ---
 if (!(Get-Command ollama -ErrorAction SilentlyContinue)) {
-    Write-Host "⚠️  Ollama is not detected on your system." -ForegroundColor Yellow
-    Write-Host "📥 Starting autonomous Ollama installation..." -ForegroundColor Cyan
-    Try {
-        winget install -e --id Ollama.Ollama --accept-source-agreements --accept-package-agreements --silent
-        Write-Host "✅ Ollama installation requested!" -ForegroundColor Green
-    } Catch {
-        Write-Host "❌ winget failed. Please download Ollama manually from https://ollama.com/download" -ForegroundColor Red
-        Exit
+    # Check common path as fallback before installing
+    $userOllamaPath = "$env:LOCALAPPDATA\Ollama\ollama.exe"
+    if (Test-Path $userOllamaPath) {
+        Write-Host "✨ Ollama found at $userOllamaPath. Adding to current session PATH..." -ForegroundColor Green
+        $env:PATH += ";$env:LOCALAPPDATA\Ollama"
+    } else {
+        Write-Host "⚠️  Ollama is not detected on your system." -ForegroundColor Yellow
+        Write-Host "📥 Starting autonomous Ollama installation..." -ForegroundColor Cyan
+        Try {
+            winget install -e --id Ollama.Ollama --accept-source-agreements --accept-package-agreements --silent
+            Write-Host "✅ Ollama installation requested!" -ForegroundColor Green
+            
+            # Briefly wait and refresh PATH for this session
+            Start-Sleep -Seconds 5
+            $env:PATH = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+            
+            if (!(Get-Command ollama -ErrorAction SilentlyContinue)) {
+                # Final fallback check
+                if (Test-Path $userOllamaPath) {
+                    $env:PATH += ";$env:LOCALAPPDATA\Ollama"
+                }
+            }
+        } Catch {
+            Write-Host "❌ winget failed. Please download Ollama manually from https://ollama.com/download" -ForegroundColor Red
+            Exit
+        }
     }
 } else {
     Write-Host "✨ Ollama is already installed. Proceeding with configuration..." -ForegroundColor Green
@@ -59,7 +77,15 @@ Try {
     $ollamaProcess = Get-Process ollama -ErrorAction SilentlyContinue
     if (!$ollamaProcess) {
         Write-Host "🚀 Starting Ollama application..." -ForegroundColor Cyan
-        Start-Process "ollama" "serve" -WindowStyle Hidden
+        $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
+        if (!$ollamaExe) { $ollamaExe = "$env:LOCALAPPDATA\Ollama\ollama.exe" }
+        
+        if (Test-Path $ollamaExe) {
+            # Start the actual GUI app which handles 'serve' automatically
+            Start-Process $ollamaExe
+        } else {
+            Start-Process "ollama" "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
+        }
         Write-Host "⏳ Waiting for Ollama to initialize (10s)..." -ForegroundColor Gray
         Start-Sleep -Seconds 10
     }
