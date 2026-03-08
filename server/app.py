@@ -92,7 +92,7 @@ def detect_llm():
         return jsonify({
             "status": "success",
             "models": models,
-            "origin": "Main Server PC"
+            "origin": "Neural Link"
         })
         
     return jsonify({
