@@ -112,6 +112,10 @@ Try {
     Write-Host " 🎉 CHATLOOM IS READY!" -ForegroundColor Yellow
     Write-Host "  1. Go back to your browser." -ForegroundColor White
     Write-Host "  2. Your local node is now secure." -ForegroundColor White
+    Write-Host ""
+    Write-Host " 💡 TIP: If you use BRAVE, ARC, or SAFARI:" -ForegroundColor Cyan
+    Write-Host "    Please disable 'Shields' or 'Privacy Shields'" -ForegroundColor Cyan
+    Write-Host "    for chatloom.online so it can find your AI." -ForegroundColor Cyan
     Write-Host "------------------------------------------" -ForegroundColor Yellow
     Write-Host ""
 } Catch {
