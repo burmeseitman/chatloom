@@ -27,26 +27,38 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def get_ollama_models(base_url=OLLAMA_URL):
-    try:
-        response = requests.get(f"{base_url}/api/tags", timeout=3)
-        if response.status_code == 200:
-            models = response.json().get('models', [])
-            suitable_models = []
-            for m in models:
-                # Security/Logic: Only include models that have a local digest (installed locally)
-                # and don't have "cloud" in their name (common for proxies)
-                name_lower = m.get('name', '').lower()
-                if not m.get('digest') or "cloud" in name_lower: 
-                    continue
-                    
-                suitable_models.append({
-                    "name": m.get('name'),
-                    "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')
-                })
-            return suitable_models
-    except:
-        return []
+def get_ollama_models():
+    # Attempt multiple common addresses for robust local and docker support
+    targets = [
+        os.getenv("OLLAMA_URL", "http://localhost:11434"),
+        "http://127.0.0.1:11434",
+        "http://host.docker.internal:11434",
+        "http://ollama-engine:11434",
+        "http://0.0.0.0:11434"
+    ]
+    # Remove duplicates while preserving order
+    targets = list(dict.fromkeys(targets))
+    
+    for base_url in targets:
+        try:
+            response = requests.get(f"{base_url}/api/tags", timeout=3)
+            if response.status_code == 200:
+                # If we found it, save this successful URL globally so that generate_bridge can use it
+                global OLLAMA_URL
+                OLLAMA_URL = base_url
+                models = response.json().get('models', [])
+                suitable_models = []
+                for m in models:
+                    name_lower = m.get('name', '').lower()
+                    if not m.get('digest') or "cloud" in name_lower: 
+                        continue
+                    suitable_models.append({
+                        "name": m.get('name'),
+                        "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')
+                    })
+                return suitable_models
+        except:
+            continue
     return []
 
 def get_setting(key, default=None):
@@ -74,7 +86,7 @@ def detect_llm():
 
     # Fallback/Primary is always the Main Server's Ollama, because generate_bridge uses it anyway.
     print("Action: Scanning Main PC (Local)")
-    models = get_ollama_models(OLLAMA_URL)
+    models = get_ollama_models()
     
     if models:
         return jsonify({
