@@ -1,3 +1,7 @@
+from gevent import monkey
+monkey.patch_all()
+from gevent.pywsgi import WSGIServer
+from geventwebsocket.handler import WebSocketHandler
 import os
 import requests
 import sqlite3
@@ -13,7 +17,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('CHATLOOM_SECRET_KEY', 'dev-secret-key-123')
 CORS(app)
 # In production, replace "*" with your specific frontend domain (e.g., https://chatloom.pages.dev)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
@@ -455,4 +459,6 @@ def handle_disconnect():
     handle_leave()
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
+    print("--- Production Server (gevent) is running on http://0.0.0.0:5001 ---")
+    http_server = WSGIServer(('0.0.0.0', 5001), app, handler_class=WebSocketHandler)
+    http_server.serve_forever()
