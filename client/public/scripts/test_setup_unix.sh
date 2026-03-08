@@ -54,7 +54,7 @@ echo " 1. Inject Security Layers (OLLAMA_ORIGINS)"
 echo " 2. Enable Local Networking (OLLAMA_HOST)"
 echo ""
 printf "❓ Proceed with secure configuration? (y/n): "
-read main_choice < /dev/tty
+read main_choice 
 
 if [[ ! "$main_choice" =~ ^[Yy]$ ]]; then
     echo "❌ Setup cancelled by user."
@@ -79,7 +79,6 @@ else
     SHELL_CONFIG="$HOME/.profile"
 fi
 
-# Apply to file for reboots
 touch "$SHELL_CONFIG"
 sed -i.bak '/OLLAMA_ORIGINS/d' "$SHELL_CONFIG" 2>/dev/null
 sed -i.bak '/OLLAMA_HOST/d' "$SHELL_CONFIG" 2>/dev/null
@@ -127,7 +126,6 @@ fi
 
 # --- Verify Bridge ---
 echo "🔗 Verifying secure bridge..."
-# We test with the production domains as origin simulator
 MAX_RETRIES=10
 RETRY_COUNT=0
 while ! curl -s -f http://localhost:11434/api/tags > /dev/null; do

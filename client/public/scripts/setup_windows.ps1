@@ -71,72 +71,75 @@ Write-Host ""
 $SECURE_ORIGINS = "https://chatloom.online,https://www.chatloom.online,https://*.chatloom.online,http://chatloom.online,http://www.chatloom.online"
 $OLLAMA_BIND = "0.0.0.0:11434"
 
-# Apply persistency for the user Registry
-Try {
-    [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "$OLLAMA_BIND", "User")
-    [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "$SECURE_ORIGINS", "User")
-    
-    # --- IMPORTANT: Inject into current PowerShell session for the restart process ---
-    $env:OLLAMA_HOST = "$OLLAMA_BIND"
-    $env:OLLAMA_ORIGINS = "$SECURE_ORIGINS"
+    # Apply persistency for the user Registry
+    Try {
+        [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "$OLLAMA_BIND", "User")
+        [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "$SECURE_ORIGINS", "User")
+        
+        # --- IMPORTANT: Inject into current PowerShell session for the restart process ---
+        $env:OLLAMA_HOST = "$OLLAMA_BIND"
+        $env:OLLAMA_ORIGINS = "$SECURE_ORIGINS"
 
-    Write-Host "🔄 Refreshing Ollama session..." -ForegroundColor Cyan
-    
-    # Check if Ollama is running to restart it
-    $ollamaProcess = Get-Process ollama -ErrorAction SilentlyContinue
-    if ($ollamaProcess) {
-        Write-Host "♻️  Restarting Ollama application..." -ForegroundColor Yellow
-        Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 3
-    }
-
-    Write-Host "🚀 Starting Ollama application..." -ForegroundColor Cyan
-    $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
-    if (!$ollamaExe) { $ollamaExe = "$env:LOCALAPPDATA\Ollama\ollama.exe" }
-    
-    if (Test-Path $ollamaExe) {
-        Start-Process $ollamaExe
-    } else {
-        Start-Process "ollama" "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
-    }
-    
-    Write-Host "⏳ Waiting for Ollama (15s)..." -ForegroundColor Gray
-    Start-Sleep -Seconds 15
-
-    Write-Host "🔗 Verifying secure bridge..." -ForegroundColor Magenta
-    
-    # Wait for API to be ready
-    $maxRetries = 10
-    $retryCount = 0
-    while ($true) {
-        Try {
-            $null = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -ErrorAction Stop
-            break
-        } Catch {
-            if ($retryCount -ge $maxRetries) {
-                Write-Host "❌ Connection timed out. Ensure Ollama icon is in your System Tray." -ForegroundColor Red
-                Break
-            }
-            Write-Host "⏳ Waiting for API... ($($retryCount + 1)/$maxRetries)" -ForegroundColor Gray
+        Write-Host "🔄 Performing deep session refresh..." -ForegroundColor Cyan
+        
+        # Check if Ollama is running to restart it
+        $ollamaProcess = Get-Process ollama -ErrorAction SilentlyContinue
+        if ($ollamaProcess) {
+            Write-Host "♻️  Restarting Ollama application..." -ForegroundColor Yellow
+            Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue
             Start-Sleep -Seconds 3
-            $retryCount++
         }
-    }
 
-    Write-Host ""
-    Write-Host " ✅ Configuration successful!" -ForegroundColor Green
-    Write-Host "------------------------------------------" -ForegroundColor Yellow
-    Write-Host " 🎉 CHATLOOM IS READY!" -ForegroundColor Yellow
-    Write-Host "  1. Go back to your browser." -ForegroundColor White
-    Write-Host "  2. Your local node is now secure." -ForegroundColor White
-    Write-Host ""
-    Write-Host " 💡 TIP: If you use BRAVE, ARC, or SAFARI:" -ForegroundColor Cyan
-    Write-Host "    Please disable 'Shields' or 'Privacy Shields'" -ForegroundColor Cyan
-    Write-Host "    for chatloom.online so it can find your AI." -ForegroundColor Cyan
-    Write-Host "------------------------------------------" -ForegroundColor Yellow
-    Write-Host ""
-} Catch {
-    Write-Host " ❌ Error during configuration. Please try running as Administrator." -ForegroundColor Red
-}
+        Write-Host "🚀 Launching Ollama with new security context..." -ForegroundColor Cyan
+        $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
+        if (!$ollamaExe) { $ollamaExe = "$env:LOCALAPPDATA\Ollama\ollama.exe" }
+        
+        if (Test-Path $ollamaExe) {
+            # Start process inheriting the environment variables from the current shell
+            Start-Process $ollamaExe
+        } else {
+            Start-Process "ollama" "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
+        }
+        
+        Write-Host "⏳ Waiting for Ollama (15s)..." -ForegroundColor Gray
+        Start-Sleep -Seconds 15
+
+        Write-Host "🔗 Verifying secure bridge..." -ForegroundColor Magenta
+        
+        # Wait for API to be ready
+        $maxRetries = 10
+        $retryCount = 0
+        while ($true) {
+            Try {
+                $null = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -ErrorAction Stop
+                break
+            } Catch {
+                if ($retryCount -ge $maxRetries) {
+                    Write-Host "❌ Connection failed. Ensure Ollama icon is in your System Tray." -ForegroundColor Red
+                    Break
+                }
+                Write-Host "⏳ Waiting for API... ($($retryCount + 1)/$maxRetries)" -ForegroundColor Gray
+                Start-Sleep -Seconds 3
+                $retryCount++
+            }
+        }
+
+        Write-Host ""
+        Write-Host " ✅ Configuration successful!" -ForegroundColor Green
+        Write-Host "------------------------------------------" -ForegroundColor Yellow
+        Write-Host " 🎉 CHATLOOM IS READY!" -ForegroundColor Yellow
+        Write-Host "  1. Back to Browser." -ForegroundColor White
+        Write-Host "  2. REFRESH the page (Shift+F5)." -ForegroundColor White
+        Write-Host ""
+        Write-Host " ⚠️  IMPORTANT (Brave/Chrome/Safari):" -ForegroundColor Red
+        Write-Host "    If AI is still NOT FOUND, go to:" -ForegroundColor Cyan
+        Write-Host "    http://localhost:11434" -ForegroundColor Cyan
+        Write-Host "    If it says 'Ollama is running', return here" -ForegroundColor White
+        Write-Host "    and refresh. This 'wakes up' the browser." -ForegroundColor White
+        Write-Host "------------------------------------------" -ForegroundColor Yellow
+        Write-Host ""
+    } Catch {
+        Write-Host " ❌ Error during configuration. Please try running as Administrator." -ForegroundColor Red
+    }
 
 Pause
