@@ -84,20 +84,37 @@ def detect_llm():
     print(f"--- Detection Start ---")
     print(f"Requester IP: {client_ip}")
 
-    # Fallback/Primary is always the Main Server's Ollama, because generate_bridge uses it anyway.
-    print("Action: Scanning Main PC (Local)")
-    models = get_ollama_models()
-    
-    if models:
+    # Case 1: Requester is the Main Server PC
+    if not client_ip or client_ip in ['127.0.0.1', 'localhost', '::1']:
+        print("Action: Scanning Main PC (Local)")
+        models = get_ollama_models()
         return jsonify({
-            "status": "success",
+            "status": "success" if models else "error",
             "models": models,
-            "origin": "Neural Link"
+            "origin": "Main PC"
         })
-        
+
+    # Case 2: Requester is a Remote PC
+    print(f"Action: Scanning Client PC at {client_ip}")
+    remote_url = f"http://{client_ip}:11434"
+    try:
+        # We use a slightly longer timeout for remote network detection
+        response = requests.get(f"{remote_url}/api/tags", timeout=5)
+        if response.status_code == 200:
+            models = response.json().get('models', [])
+            suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models]
+            print(f"Success: Found {len(suitable)} models at {client_ip}")
+            return jsonify({
+                "status": "success",
+                "models": suitable,
+                "origin": "Remote Node"
+            })
+    except Exception as e:
+        print(f"Failure: Could not reach {remote_url}. Error: {str(e)}")
+    
     return jsonify({
         "status": "error",
-        "message": f"Could not detect Ollama on the server. Please ensure Ollama is running.",
+        "message": f"Could not detect Ollama at {client_ip}. If you are on a remote machine, ensure Ollama is listening on the network.",
         "models": [],
         "detected_ip": client_ip
     }), 404
