@@ -844,10 +844,8 @@ function App() {
 
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
-    const winCmd =
-      'powershell -ExecutionPolicy Bypass -Command "irm https://chatloom.online/scripts/setup_windows.ps1 | iex"';
-    const unixCmd =
-      "curl -sSL https://chatloom.online/scripts/setup_unix.sh | bash";
+    const winCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${window.location.origin}/scripts/setup_windows.ps1 | iex"`;
+    const unixCmd = `curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`;
 
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
@@ -1183,13 +1181,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      irm https://www.chatloom.online/scripts/setup_windows.ps1
-                      | iex
+                      {`irm ${window.location.origin}/scripts/setup_windows.ps1 | iex`}
                     </code>
                     <button
                       onClick={() => {
+                        const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          "irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex",
+                          `irm ${origin}/scripts/setup_windows.ps1 | iex`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
@@ -1208,13 +1206,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      curl -sSL
-                      https://www.chatloom.online/scripts/setup_unix.sh | bash
+                      {`curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`}
                     </code>
                     <button
                       onClick={() => {
+                        const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          "curl -sSL https://www.chatloom.online/scripts/setup_unix.sh | bash",
+                          `curl -sSL ${origin}/scripts/setup_unix.sh | bash`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
