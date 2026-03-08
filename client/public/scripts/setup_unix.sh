@@ -14,11 +14,27 @@ echo " 🐉 Initializing ChatLoom Secure Bridge..."
 echo "------------------------------------------"
 echo ""
 
+# --- Pre-scan for existing setup ---
+OLLAMA_STATUS="[Will Install]"
+MODEL_STATUS="[Will Pull]"
+
+# Check for Ollama in PATH or common locations
+if command -v ollama &> /dev/null || [ -f "/usr/local/bin/ollama" ] || [ -f "/opt/homebrew/bin/ollama" ] || [ -x "/Applications/Ollama.app/Contents/Resources/ollama" ]; then
+    OLLAMA_STATUS="[Already Found ✨]"
+fi
+
+# Check for model if ollama is found
+if [[ "$OLLAMA_STATUS" == *Found* ]]; then
+    if ollama list 2>/dev/null | grep -q "llama3.2:1b"; then
+        MODEL_STATUS="[Already Found ✨]"
+    fi
+fi
+
 # --- Main Confirmation ---
-echo "This script will automatically:"
-echo " 1. Install Ollama (if missing)"
-echo " 2. Configure Security Layers (OLLAMA_ORIGINS)"
-echo " 3. Download the AI Brain (llama3.2:1b)"
+echo "Based on your system, this script will:"
+echo " 1. Install Ollama: $OLLAMA_STATUS"
+echo " 2. Configure Security Layers (OLLAMA_ORIGINS): [Fixing...]"
+echo " 3. Download AI Brain (llama3.2:1b): $MODEL_STATUS"
 echo ""
 printf "❓ Do you want to proceed with autonomous setup? (y/n): "
 read main_choice < /dev/tty
@@ -31,9 +47,13 @@ fi
 echo "🚀 Starting autonomous setup..."
 echo ""
 
+# Update PATH if common locations exist but not in current PATH
+if [ -d "/opt/homebrew/bin" ]; then export PATH="/opt/homebrew/bin:$PATH"; fi
+if [ -d "/usr/local/bin" ]; then export PATH="/usr/local/bin:$PATH"; fi
+if [ -d "/Applications/Ollama.app/Contents/Resources" ]; then export PATH="/Applications/Ollama.app/Contents/Resources:$PATH"; fi
+
 # --- Ollama Check & Install ---
-if ! command -v ollama &> /dev/null; then
-    echo "⚠️  Ollama is not detected on your system."
+if [[ "$OLLAMA_STATUS" == *Install* ]]; then
     echo "📥 Starting autonomous Ollama installation..."
     
     OS_TYPE="$(uname -s)"

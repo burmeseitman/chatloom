@@ -9,11 +9,29 @@ Write-Host " 🐉 Initializing ChatLoom Secure Bridge..." -ForegroundColor Cyan
 Write-Host "------------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
+# --- Pre-scan for existing setup ---
+$OLLAMA_STATUS = "[Will Install]"
+$MODEL_STATUS = "[Will Pull]"
+
+# Check for Ollama in PATH or common locations
+$ollamaUserPath = "$env:LOCALAPPDATA\Ollama\ollama.exe"
+if ((Get-Command ollama -ErrorAction SilentlyContinue) -or (Test-Path $ollamaUserPath)) {
+    $OLLAMA_STATUS = "[Already Found ✨]"
+}
+
+# Check for model if ollama is found
+if ($OLLAMA_STATUS -match "Found") {
+    $modelCheck = ollama list 2>$null | Select-String "llama3.2:1b"
+    if ($modelCheck) {
+        $MODEL_STATUS = "[Already Found ✨]"
+    }
+}
+
 # --- Main Confirmation ---
-Write-Host "This script will automatically:" -ForegroundColor White
-Write-Host " 1. Install Ollama (if missing via winget)" -ForegroundColor White
-Write-Host " 2. Configure Environment Variables (OLLAMA_ORIGINS)" -ForegroundColor White
-Write-Host " 3. Download the AI Brain (llama3.2:1b)" -ForegroundColor White
+Write-Host "Based on your system, this script will:" -ForegroundColor White
+Write-Host " 1. Install Ollama: $OLLAMA_STATUS" -ForegroundColor White
+Write-Host " 2. Configure Environment Variables (CORS): [Fixing...]" -ForegroundColor White
+Write-Host " 3. Download AI Brain (llama3.2:1b): $MODEL_STATUS" -ForegroundColor White
 Write-Host ""
 
 $mainChoice = Read-Host "❓ Do you want to proceed with autonomous setup? (y/n)"
@@ -26,35 +44,24 @@ Write-Host "🚀 Starting autonomous setup..." -ForegroundColor Cyan
 Write-Host ""
 
 # --- Ollama Check & Install ---
-if (!(Get-Command ollama -ErrorAction SilentlyContinue)) {
-    # Check common path as fallback before installing
-    $userOllamaPath = "$env:LOCALAPPDATA\Ollama\ollama.exe"
-    if (Test-Path $userOllamaPath) {
-        Write-Host "✨ Ollama found at $userOllamaPath. Adding to current session PATH..." -ForegroundColor Green
-        $env:PATH += ";$env:LOCALAPPDATA\Ollama"
-    } else {
-        Write-Host "⚠️  Ollama is not detected on your system." -ForegroundColor Yellow
-        Write-Host "📥 Starting autonomous Ollama installation..." -ForegroundColor Cyan
-        Try {
-            winget install -e --id Ollama.Ollama --accept-source-agreements --accept-package-agreements --silent
-            Write-Host "✅ Ollama installation requested!" -ForegroundColor Green
-            
-            # Briefly wait and refresh PATH for this session
-            Start-Sleep -Seconds 5
-            $env:PATH = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
-            
-            if (!(Get-Command ollama -ErrorAction SilentlyContinue)) {
-                # Final fallback check
-                if (Test-Path $userOllamaPath) {
-                    $env:PATH += ";$env:LOCALAPPDATA\Ollama"
-                }
-            }
-        } Catch {
-            Write-Host "❌ winget failed. Please download Ollama manually from https://ollama.com/download" -ForegroundColor Red
-            Exit
-        }
+if ($OLLAMA_STATUS -match "Install") {
+    Write-Host "📥 Starting autonomous Ollama installation..." -ForegroundColor Cyan
+    Try {
+        winget install -e --id Ollama.Ollama --accept-source-agreements --accept-package-agreements --silent
+        Write-Host "✅ Ollama installation requested!" -ForegroundColor Green
+        
+        # Briefly wait and refresh PATH for this session
+        Start-Sleep -Seconds 5
+        $env:PATH = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
+    } Catch {
+        Write-Host "❌ winget failed. Please download Ollama manually from https://ollama.com/download" -ForegroundColor Red
+        Exit
     }
 } else {
+    # If found via pre-scan but not in command path, add it now
+    if (!(Get-Command ollama -ErrorAction SilentlyContinue) -and (Test-Path $ollamaUserPath)) {
+         $env:PATH += ";$env:LOCALAPPDATA\Ollama"
+    }
     Write-Host "✨ Ollama is already installed. Proceeding with configuration..." -ForegroundColor Green
 }
 
