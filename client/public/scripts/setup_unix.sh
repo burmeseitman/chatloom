@@ -81,8 +81,9 @@ fi
 
 echo ""
 
-# Official Secured Domain
-SECURE_ORIGINS="https://www.chatloom.online, http://localhost:*, http://127.0.0.1:*"
+# Official Secured Domains only (Protects user from malicious sites)
+SECURE_ORIGINS="https://chatloom.online, https://www.chatloom.online, https://*.chatloom.online, http://localhost:*, http://127.0.0.1:*"
+OLLAMA_BIND="0.0.0.0:11434"
 
 # Identify the shell configuration file (zsh or bash)
 SHELL_CONFIG=""
@@ -112,13 +113,13 @@ if [ -f "$SHELL_CONFIG" ]; then
 fi
 
 # Inject the secure variables
-echo 'export OLLAMA_HOST="0.0.0.0"' >> "$SHELL_CONFIG"
+echo "export OLLAMA_HOST=\"$OLLAMA_BIND\"" >> "$SHELL_CONFIG"
 echo "export OLLAMA_ORIGINS=\"$SECURE_ORIGINS\"" >> "$SHELL_CONFIG"
 
 # --- Seamless Integration (No Restart Hack) ---
 if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "🛡️  Applying instant security policy (macOS)..."
-    launchctl setenv OLLAMA_HOST "0.0.0.0"
+    launchctl setenv OLLAMA_HOST "$OLLAMA_BIND"
     launchctl setenv OLLAMA_ORIGINS "$SECURE_ORIGINS"
 fi
 

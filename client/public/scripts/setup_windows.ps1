@@ -67,14 +67,15 @@ if ($OLLAMA_STATUS -match "Install") {
 
 Write-Host ""
 
-# Define Secure Origins (Official production + local nodes)
-$SECURE_ORIGINS = "https://www.chatloom.online, http://localhost:*, http://127.0.0.1:*"
+# Define Secure Origins (Whitelisted ChatLoom domains only for safety)
+$SECURE_ORIGINS = "https://chatloom.online, https://www.chatloom.online, https://*.chatloom.online, http://localhost:*, http://127.0.0.1:*"
+$OLLAMA_BIND = "0.0.0.0:11434"
 
 Write-Host "🛡️  Configuring security layers for your local node..." -ForegroundColor White
 
 # Use Environment variable for the Current User
 Try {
-    [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0", "User")
+    [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "$OLLAMA_BIND", "User")
     [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "$SECURE_ORIGINS", "User")
     
     Write-Host ""
