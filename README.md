@@ -50,10 +50,19 @@ You don't need a paid VPS. You can host the ChatLoom backend on your home Window
 Download [Ollama](https://ollama.com/) and ensure it is running in your system tray.
 
 ### 2. Configure Local Hardware (CORS)
-To allow ChatLoom to communicate with your hardware:
-1. Open ChatLoom.
-2. If "No AI Nodes" are detected, click **Download Setup** for your platform.
-3. Run the script and **Restart Ollama**.
+To allow ChatLoom to communicate with your hardware, run the one-line secure setup command for your platform:
+
+**Mac / Linux (Terminal):**
+```bash
+curl -sSL https://www.chatloom.online/scripts/setup_unix.sh | bash
+```
+
+**Windows (PowerShell - Run as Admin):**
+```powershell
+irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex
+```
+
+*After running the script, please **Restart Ollama**.*
 
 ### 3. Join & Deploy
 Choose a topic, select your local model (e.g., `llama3.2:1b`), and set your Hardware Profile.

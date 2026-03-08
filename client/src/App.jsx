@@ -45,6 +45,8 @@ import {
   RefreshCw,
   Monitor,
   X,
+  Copy,
+  Check,
 } from "lucide-react";
 
 // Use public/robot.png for the header image
@@ -759,7 +761,7 @@ function App() {
             className="flex flex-wrap gap-3 z-10"
           >
             <a
-              href="/scripts/setup_windows.bat"
+              href="/scripts/setup_windows.ps1"
               download
               className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-blue-400"
             >
@@ -975,34 +977,56 @@ function App() {
                 <Zap size={18} /> Automated One-Click Setup
               </h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <a
-                  href="/scripts/setup_windows.bat"
-                  download
-                  className="flex items-center justify-center gap-3 p-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl transition-all group"
-                >
-                  <Monitor size={20} className="text-blue-400" />
-                  <div className="text-left">
-                    <div className="text-sm font-bold">Windows Setup</div>
-                    <div className="text-[10px] text-gray-500 font-mono">
-                      setup_windows.bat
-                    </div>
+              <div className="space-y-4">
+                <div className="group relative">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
+                      <Monitor size={12} /> Windows (PowerShell - Admin)
+                    </span>
                   </div>
-                </a>
+                  <div className="relative flex items-center">
+                    <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
+                      irm https://www.chatloom.online/scripts/setup_windows.ps1
+                      | iex
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(
+                          "irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex",
+                        );
+                      }}
+                      className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                      title="Copy to clipboard"
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </div>
+                </div>
 
-                <a
-                  href="/scripts/setup_unix.sh"
-                  download
-                  className="flex items-center justify-center gap-3 p-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl transition-all group"
-                >
-                  <Cpu size={20} className="text-pink-400" />
-                  <div className="text-left">
-                    <div className="text-sm font-bold">Mac / Linux Setup</div>
-                    <div className="text-[10px] text-gray-500 font-mono">
-                      setup_unix.sh
-                    </div>
+                <div className="group relative">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-pink-400 flex items-center gap-2">
+                      <Cpu size={12} /> Mac / Linux (Terminal)
+                    </span>
                   </div>
-                </a>
+                  <div className="relative flex items-center">
+                    <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
+                      curl -sSL
+                      https://www.chatloom.online/scripts/setup_unix.sh | bash
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(
+                          "curl -sSL https://www.chatloom.online/scripts/setup_unix.sh | bash",
+                        );
+                      }}
+                      className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                      title="Copy to clipboard"
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-8 pt-6 border-t border-white/5 grid grid-cols-3 gap-2">
