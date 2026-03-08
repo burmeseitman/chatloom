@@ -548,9 +548,11 @@ function App() {
         "http://localhost:11434/api/tags",
       ];
 
+      let lastLocalError = null;
+
       for (const target of targets) {
         try {
-          const localRes = await axios.get(target, { timeout: 1500 });
+          const localRes = await axios.get(target, { timeout: 5000 });
           if (localRes.data.models) {
             const mod = localRes.data.models
               .filter(
@@ -571,7 +573,12 @@ function App() {
             }
           }
         } catch (e) {
-          console.warn(`Detection failed for ${target}:`, e.message);
+          lastLocalError = e;
+          console.warn(
+            `Detection failed for ${target}:`,
+            e.message,
+            e.response?.status,
+          );
         }
       }
 
@@ -594,24 +601,33 @@ function App() {
         console.error("Bridge link failed:", bridgeErr.message);
       }
 
-      // 3. Final Failure - Show Troubleshooting
+      // 3. Final Failure - Show Diagnostics
       let errorMsg = "No local brains found.";
-      if (isHttps) {
-        errorMsg =
-          "Your browser is blocking Local AI access due to HTTPS (Mixed Content). " +
-          "If you're using Brave/Chrome, try visiting http://localhost:11434 in a new tab, " +
-          "then refresh this page. You might also need to allow 'insecure content' or " +
-          "'private network access' in your browser settings.";
-      } else {
-        errorMsg =
-          "No local brains found. Is Ollama running? " +
-          "If you're running Ollama, ensure it's accessible on http://localhost:11434.";
+
+      if (lastLocalError) {
+        if (lastLocalError.response && lastLocalError.response.status === 403) {
+          errorMsg =
+            "Ollama blocked the connection (403 Forbidden). Please run the ChatLoom Setup Script on your PC to Fix Origins.";
+        } else if (lastLocalError.message === "Network Error") {
+          if (isHttps) {
+            errorMsg =
+              "Browser blocked Local Node (Mixed Content). Allow Insecure Content in site settings or visit http://localhost:11434 to unlock.";
+          } else {
+            errorMsg =
+              "Connection Refused. Ollama is not running or is blocked by an Adblocker/Firewall.";
+          }
+        } else if (lastLocalError.code === "ECONNABORTED") {
+          errorMsg =
+            "Connection Timed Out. Your Local AI node is taking too long to wake up. Refresh to try again.";
+        } else {
+          errorMsg = isHttps
+            ? "Browser blocked access. Please visit http://localhost:11434 separately."
+            : "No local brains found. Is Ollama running?";
+        }
       }
 
       setStatus(errorMsg);
       setIsDetecting(false);
-
-      // Help UI: Trigger a specific state to show "How to fix"
     } catch (e) {
       console.error("Critical detection failure", e);
       setStatus("Neural link failure.");
