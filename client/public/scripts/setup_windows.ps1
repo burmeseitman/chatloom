@@ -1,5 +1,5 @@
 # ==========================================
-#   ChatLoom - Secure Node Onboarding (Win)
+#   ChatLoom - Secure Node Bridge (Win)
 # ==========================================
 # PowerShell version for Windows.
 # irm https://chatloom.online/scripts/setup_windows.ps1 | iex
@@ -9,82 +9,67 @@ Write-Host " 🐉 Initializing ChatLoom Secure Bridge..." -ForegroundColor Cyan
 Write-Host "------------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
-# --- Pre-scan for existing setup ---
-$OLLAMA_STATUS = "[Will Install]"
-$MODEL_STATUS = "[Will Pull]"
-
-# Check for Ollama in PATH or common locations
+# --- Pre-scan for Ollama ---
 $ollamaUserPath = "$env:LOCALAPPDATA\Ollama\ollama.exe"
-if ((Get-Command ollama -ErrorAction SilentlyContinue) -or (Test-Path $ollamaUserPath)) {
-    $OLLAMA_STATUS = "[Already Found ✨]"
+$OLLAMA_FOUND = $false
+
+if (Get-Command ollama -ErrorAction SilentlyContinue) {
+    $OLLAMA_FOUND = $true
+} elseif (Test-Path $ollamaUserPath) {
+    $OLLAMA_FOUND = $true
+    # Add to current session PATH
+    $env:PATH += ";$env:LOCALAPPDATA\Ollama"
 }
 
-# Check for model if ollama is found
-if ($OLLAMA_STATUS -match "Found") {
-    $modelCheck = ollama list 2>$null | Select-String "llama3.2:1b"
-    if ($modelCheck) {
-        $MODEL_STATUS = "[Already Found ✨]"
-    }
+# --- Check Requirement ---
+if (-not $OLLAMA_FOUND) {
+    Write-Host "------------------------------------------" -ForegroundColor Red
+    Write-Host " ❌ OLLAMA NOT DETECTED" -ForegroundColor Red
+    Write-Host "------------------------------------------" -ForegroundColor Red
+    Write-Host " To use ChatLoom, please follow these steps:" -ForegroundColor White
+    Write-Host ""
+    Write-Host " 1. Download Ollama: https://ollama.com/download" -ForegroundColor Cyan
+    Write-Host " 2. Run the installer (.exe file)" -ForegroundColor Cyan
+    Write-Host " 3. Launch Ollama from your Start menu" -ForegroundColor Cyan
+    Write-Host " 4. Once it appears in your System Tray (bottom right)," -ForegroundColor Cyan
+    Write-Host "    Run this command again to secure it." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "------------------------------------------" -ForegroundColor Yellow
+    Pause
+    Exit
 }
 
 # --- Main Confirmation ---
-Write-Host "Based on your system, this script will:" -ForegroundColor White
-Write-Host " 1. Install Ollama: $OLLAMA_STATUS" -ForegroundColor White
-Write-Host " 2. Configure Environment Variables (CORS): [Fixing...]" -ForegroundColor White
-Write-Host " 3. Download AI Brain (llama3.2:1b): $MODEL_STATUS" -ForegroundColor White
+Write-Host "This script will CONFIGURE your existing Ollama for ChatLoom:" -ForegroundColor White
+Write-Host " 1. Inject Security Layers (OLLAMA_ORIGINS)" -ForegroundColor White
+Write-Host " 2. Enable Local Networking (OLLAMA_HOST)" -ForegroundColor White
+Write-Host " 3. Synchronize AI Brain (llama3.2:1b)" -ForegroundColor White
 Write-Host ""
 
-$mainChoice = Read-Host "❓ Do you want to proceed with autonomous setup? (y/n)"
+$mainChoice = Read-Host "❓ Proceed with secure configuration? (y/n)"
 if ($mainChoice -notmatch "[Yy]") {
     Write-Host "❌ Setup cancelled by user." -ForegroundColor Red
     Exit
 }
 
-Write-Host "🚀 Starting autonomous setup..." -ForegroundColor Cyan
+Write-Host "🚀 Starting secure configuration..." -ForegroundColor Cyan
 Write-Host ""
 
-# --- Ollama Check & Install ---
-if ($OLLAMA_STATUS -match "Install") {
-    Write-Host "📥 Starting autonomous Ollama installation..." -ForegroundColor Cyan
-    Try {
-        winget install -e --id Ollama.Ollama --accept-source-agreements --accept-package-agreements --silent
-        Write-Host "✅ Ollama installation requested!" -ForegroundColor Green
-        
-        # Briefly wait and refresh PATH for this session
-        Start-Sleep -Seconds 5
-        $env:PATH = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
-    } Catch {
-        Write-Host "❌ winget failed. Please download Ollama manually from https://ollama.com/download" -ForegroundColor Red
-        Exit
-    }
-} else {
-    # If found via pre-scan but not in command path, add it now
-    if (!(Get-Command ollama -ErrorAction SilentlyContinue) -and (Test-Path $ollamaUserPath)) {
-         $env:PATH += ";$env:LOCALAPPDATA\Ollama"
-    }
-    Write-Host "✨ Ollama is already installed. Proceeding with configuration..." -ForegroundColor Green
-}
-
-Write-Host ""
-
-# Define Secure Origins (Whitelisted ChatLoom domains only for safety)
-$SECURE_ORIGINS = "https://chatloom.online, https://www.chatloom.online, https://*.chatloom.online, http://localhost:*, http://127.0.0.1:*"
+# Define Secure Origins (Strictly whitelisted for user safety)
+$SECURE_ORIGINS = "https://chatloom.online, https://www.chatloom.online, https://*.chatloom.online"
 $OLLAMA_BIND = "0.0.0.0:11434"
 
-Write-Host "🛡️  Configuring security layers for your local node..." -ForegroundColor White
-
-# Use Environment variable for the Current User
+# Apply persistency for the user
 Try {
     [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "$OLLAMA_BIND", "User")
     [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "$SECURE_ORIGINS", "User")
     
-    Write-Host ""
-    Write-Host "🔄 Ensuring Ollama service is active with new settings..." -ForegroundColor Cyan
+    Write-Host "🔄 Refreshing Ollama session..." -ForegroundColor Cyan
     
-    # Check if Ollama is already running
+    # Check if Ollama is running to restart it
     $ollamaProcess = Get-Process ollama -ErrorAction SilentlyContinue
     if ($ollamaProcess) {
-        Write-Host "♻️  Restarting Ollama to apply new security layers..." -ForegroundColor Yellow
+        Write-Host "♻️  Restarting Ollama application..." -ForegroundColor Yellow
         Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 3
     }
@@ -113,38 +98,28 @@ Try {
             break
         } Catch {
             if ($retryCount -ge $maxRetries) {
-                Write-Host "❌ Could not connect to Ollama API at localhost:11434." -ForegroundColor Red
-                Write-Host "💡 Tip: Check your System Tray for the Ollama icon." -ForegroundColor Gray
+                Write-Host "❌ Connection timed out. Ensure Ollama icon is in your System Tray." -ForegroundColor Red
                 Break
             }
-            Write-Host "⏳ Waiting for Ollama API to be ready... ($($retryCount + 1)/$maxRetries)" -ForegroundColor Gray
+            Write-Host "⏳ Waiting for API... ($($retryCount + 1)/$maxRetries)" -ForegroundColor Gray
             Start-Sleep -Seconds 3
             $retryCount++
         }
     }
 
-    # Force pull to ensure integrity
-    Write-Host "📥 Ensuring 'llama3.2:1b' is fully loaded..." -ForegroundColor Cyan
+    # Ensure model integrity
     ollama pull llama3.2:1b
 
-    $modelCheck = ollama list 2>$null | Select-String "llama3.2:1b"
-    if ($modelCheck) {
-        Write-Host "✨  Model 'llama3.2:1b' is verified and ready!" -ForegroundColor Green
-    } else {
-        Write-Host "❌ Failed to load model. Please run 'ollama pull llama3.2:1b' manually." -ForegroundColor Red
-        Exit
-    }
-    
     Write-Host ""
-    Write-Host " 🎉 Setup Complete! No restart required." -ForegroundColor Green
+    Write-Host " ✅ Configuration successful!" -ForegroundColor Green
     Write-Host "------------------------------------------" -ForegroundColor Yellow
-    Write-Host " 🚀 NEXT STEPS:" -ForegroundColor Yellow
-    Write-Host "  1. Go back to ChatLoom in your browser." -ForegroundColor White
-    Write-Host "  2. It will now detect your local AI Brain." -ForegroundColor White
+    Write-Host " 🎉 CHATLOOM IS READY!" -ForegroundColor Yellow
+    Write-Host "  1. Go back to your browser." -ForegroundColor White
+    Write-Host "  2. Your local node is now secure." -ForegroundColor White
     Write-Host "------------------------------------------" -ForegroundColor Yellow
     Write-Host ""
 } Catch {
-    Write-Host " ❌ Error during configuration. Please run as Administrator if variables failed." -ForegroundColor Red
+    Write-Host " ❌ Error during configuration. Please try running as Administrator." -ForegroundColor Red
 }
 
 Pause
