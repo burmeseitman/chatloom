@@ -78,24 +78,28 @@ Try {
     [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "$SECURE_ORIGINS", "User")
     
     Write-Host ""
-    Write-Host "🔄 Ensuring Ollama service is active..." -ForegroundColor Cyan
+    Write-Host "🔄 Ensuring Ollama service is active with new settings..." -ForegroundColor Cyan
     
-    # Try to start Ollama if not running
+    # Check if Ollama is already running
     $ollamaProcess = Get-Process ollama -ErrorAction SilentlyContinue
-    if (!$ollamaProcess) {
-        Write-Host "🚀 Starting Ollama application..." -ForegroundColor Cyan
-        $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
-        if (!$ollamaExe) { $ollamaExe = "$env:LOCALAPPDATA\Ollama\ollama.exe" }
-        
-        if (Test-Path $ollamaExe) {
-            # Start the actual GUI app which handles 'serve' automatically
-            Start-Process $ollamaExe
-        } else {
-            Start-Process "ollama" "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
-        }
-        Write-Host "⏳ Waiting for Ollama to initialize (10s)..." -ForegroundColor Gray
-        Start-Sleep -Seconds 10
+    if ($ollamaProcess) {
+        Write-Host "♻️  Restarting Ollama to apply new security layers..." -ForegroundColor Yellow
+        Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
     }
+
+    Write-Host "🚀 Starting Ollama application..." -ForegroundColor Cyan
+    $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
+    if (!$ollamaExe) { $ollamaExe = "$env:LOCALAPPDATA\Ollama\ollama.exe" }
+    
+    if (Test-Path $ollamaExe) {
+        Start-Process $ollamaExe
+    } else {
+        Start-Process "ollama" "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
+    }
+    
+    Write-Host "⏳ Waiting for Ollama to initialize (10s)..." -ForegroundColor Gray
+    Start-Sleep -Seconds 10
 
     Write-Host "🧠  Checking for local AI Brain (llama3.2:1b)..." -ForegroundColor Magenta
     
@@ -104,7 +108,7 @@ Try {
     $retryCount = 0
     while ($true) {
         Try {
-            $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -ErrorAction Stop
+            $null = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -ErrorAction Stop
             break
         } Catch {
             if ($retryCount -ge $maxRetries) {
@@ -117,7 +121,7 @@ Try {
         }
     }
 
-    $modelCheck = ollama list | Select-String "llama3.2:1b"
+    $modelCheck = ollama list 2>$null | Select-String "llama3.2:1b"
     if ($modelCheck) {
         Write-Host "✨  Model 'llama3.2:1b' is already available." -ForegroundColor Green
     } else {
@@ -127,12 +131,11 @@ Try {
     }
     
     Write-Host ""
-    Write-Host " ✅ Security configuration successfully injected!" -ForegroundColor Green
+    Write-Host " 🎉 Setup Complete! No restart required." -ForegroundColor Green
     Write-Host "------------------------------------------" -ForegroundColor Yellow
     Write-Host " 🚀 NEXT STEPS:" -ForegroundColor Yellow
-    Write-Host "  1. Close and RESTART your PowerShell window." -ForegroundColor White
-    Write-Host "  2. Fully RESTART your Ollama application (check System Tray)." -ForegroundColor White
-    Write-Host "  3. Open ChatLoom: $((Get-Variable -Name "window.location.origin" -ErrorAction SilentlyContinue).Value ?? "https://www.chatloom.online")" -ForegroundColor White
+    Write-Host "  1. Go back to ChatLoom in your browser." -ForegroundColor White
+    Write-Host "  2. It will now detect your local AI Brain." -ForegroundColor White
     Write-Host "------------------------------------------" -ForegroundColor Yellow
     Write-Host ""
 } Catch {

@@ -115,28 +115,41 @@ fi
 echo 'export OLLAMA_HOST="0.0.0.0"' >> "$SHELL_CONFIG"
 echo "export OLLAMA_ORIGINS=\"$SECURE_ORIGINS\"" >> "$SHELL_CONFIG"
 
-# --- Ensure Ollama is running ---
-echo "🔄 Ensuring Ollama service is active..."
+# --- Seamless Integration (No Restart Hack) ---
 if [[ "$(uname -s)" == "Darwin" ]]; then
-    # On Mac, check if app is running, if not open it
-    if ! pgrep -x "Ollama" > /dev/null; then
-        echo "🚀 Starting Ollama application..."
-        if [ -d "/Applications/Ollama.app" ]; then
-            open "/Applications/Ollama.app"
-        else
-            # Fallback for older brew versions or manual installs elsewhere
-            open -a Ollama || echo "⚠️  Could not start Ollama GUI. Please start it manually."
-        fi
-        echo "⏳ Waiting for Ollama to initialize (10s)..."
-        sleep 10
+    echo "🛡️  Applying instant security policy (macOS)..."
+    launchctl setenv OLLAMA_HOST "0.0.0.0"
+    launchctl setenv OLLAMA_ORIGINS "$SECURE_ORIGINS"
+fi
+
+# --- Ensure Ollama is running (with auto-restart if needed) ---
+echo "🔄 Ensuring Ollama service is active with new settings..."
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    # If Ollama is running, we MUST restart it to pick up new CORS settings
+    if pgrep -x "Ollama" > /dev/null; then
+        echo "♻️  Restarting Ollama to apply new security layers..."
+        killall Ollama || true
+        sleep 2
     fi
+    
+    echo "🚀 Starting Ollama application..."
+    if [ -d "/Applications/Ollama.app" ]; then
+        open "/Applications/Ollama.app"
+    else
+        open -a Ollama || echo "⚠️  Could not start Ollama GUI. Please start it manually."
+    fi
+    echo "⏳ Waiting for Ollama to initialize (10s)..."
+    sleep 10
 else
-    # On Linux, try to start systemd service if not active
-    if ! systemctl is-active --quiet ollama; then
+    # Linux...
+    if systemctl is-active --quiet ollama; then
+        echo "♻️  Restarting Ollama service..."
+        sudo systemctl restart ollama || true
+    else
         echo "🚀 Starting Ollama service..."
         sudo systemctl start ollama || true
-        sleep 5
     fi
+    sleep 5
 fi
 
 echo ""
@@ -154,7 +167,7 @@ while ! curl -s http://localhost:11434/api/tags > /dev/null; do
     RETRY_COUNT=$((RETRY_COUNT+1))
 done
 
-if ollama list | grep -q "llama3.2:1b"; then
+if ollama list 2>/dev/null | grep -q "llama3.2:1b"; then
     echo "✨  Model 'llama3.2:1b' is already available."
 else
     echo "📥  Pulling small Llama model (llama3.2:1b) for instant start..."
@@ -163,11 +176,10 @@ else
 fi
 
 echo ""
-echo " ✅ Security configuration successfully injected!"
+echo " 🎉 Setup Complete! No restart required."
 echo "------------------------------------------"
 echo " 🚀 NEXT STEPS:"
-echo "  1. Close and RESTART your Terminal."
-echo "  2. Fully RESTART the Ollama application."
-echo "  3. Open ChatLoom: https://www.chatloom.online"
+echo "  1. Go back to ChatLoom in your browser."
+echo "  2. It will now detect your local AI Brain."
 echo "------------------------------------------"
 echo ""
