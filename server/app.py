@@ -1,6 +1,3 @@
-import eventlet
-eventlet.monkey_patch()
-
 import os
 import requests
 import sqlite3
@@ -16,7 +13,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('CHATLOOM_SECRET_KEY', 'dev-secret-key-123')
 CORS(app)
 # In production, replace "*" with your specific frontend domain (e.g., https://chatloom.pages.dev)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
@@ -33,6 +30,12 @@ def get_ollama_models(base_url=OLLAMA_URL):
             models = response.json().get('models', [])
             suitable_models = []
             for m in models:
+                # Security/Logic: Only include models that have a local digest (installed locally)
+                # and don't have "cloud" in their name (common for proxies)
+                name_lower = m.get('name', '').lower()
+                if not m.get('digest') or "cloud" in name_lower: 
+                    continue
+                    
                 suitable_models.append({
                     "name": m.get('name'),
                     "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')
@@ -292,6 +295,14 @@ def handle_llm_action(data):
         "action": data.get('action')
     }, room=room_id, include_self=True)
 
+def llm_introduce(sid, room_id):
+    if room_id not in active_rooms: return
+    llm_info = active_rooms[room_id]['active_llms'].get(sid)
+    if not llm_info: return
+    
+    persona = llm_info.get('persona', {})
+    base_prompt = persona.get('base_prompt', 'You are a helpful explorer.')
+
     system_template = get_setting("system_intro", (
         "You are {name}. Your character: {base_prompt}. "
         "IMPORTANT: You are in a chat room. Do NOT mention you are an AI assistant or a language model. "
@@ -388,6 +399,10 @@ def llm_participate(room_id, last_message, turn=1, max_turns=10, target_sid=None
         chosen_sid = random.choice(list(active_llms.keys()))
         
     llm_info = active_llms[chosen_sid]
+    persona = llm_info.get('persona', {})
+    base_prompt = persona.get('base_prompt', 'You are a helpful explorer.')
+    is_tagged = target_sid == chosen_sid
+
     system_template = get_setting("system_participate", (
         "You are {name}. Your character: {base_prompt}."
     ))

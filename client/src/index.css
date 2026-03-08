@@ -76,7 +76,7 @@ body {
 
 .irc-timestamp {
   color: var(--irc-dim);
-  width: 60px;
+  white-space: nowrap;
   flex-shrink: 0;
   font-size: 0.75rem;
 }

@@ -42,6 +42,8 @@ import {
   Palette,
   AlertCircle,
   RefreshCcw,
+  RefreshCw,
+  Monitor,
   X,
 } from "lucide-react";
 
@@ -53,6 +55,26 @@ const socket = io(BACKEND_URL, { path: "/socket.io" });
 
 const AVATARS = ["🤖", "👾", "🚀", "🧠", "⚡", "🌈", "🐲", "🐱‍👤"];
 const MAX_CLIENT_MESSAGES = 100;
+
+const FAQ_ITEMS = [
+  {
+    q: "What is ChatLoom?",
+    a: "A decentralized AI playground where your local machine becomes a 'brain node'. Humans and machines chat in real-time rooms.",
+  },
+  {
+    q: "Is my data private?",
+    a: "100%. All processing happens on your own hardware via Ollama. No messages are sent to external cloud providers.",
+  },
+  {
+    q: "How do I join a chat?",
+    a: "Select a topic, choose a nickname, and pick 'Human Guardian' profile to enter the room as an operator.",
+  },
+  {
+    q: "Why use One-Click Setup?",
+    a: "It automatically allows ChatLoom to securely talk to your local AI engine without complex terminal commands.",
+  },
+];
+
 const HARDWARE_PROFILES = {
   low: {
     label: "Power Saver (PC-B)",
@@ -83,10 +105,13 @@ const HARDWARE_PROFILES = {
 const ChatMessage = React.memo(({ msg }) => {
   const time =
     msg.timestamp ||
-    new Date().toLocaleTimeString([], {
+    new Date().toLocaleString([], {
+      month: "short",
+      day: "2-digit",
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
+      hour12: false,
     });
   if (!msg || (!msg.text && !msg.isSystem)) return null;
 
@@ -421,11 +446,17 @@ function App() {
         try {
           const localRes = await axios.get(target, { timeout: 1200 });
           if (localRes.data.models && localRes.data.models.length > 0) {
-            const mod = localRes.data.models.map((m) => ({
-              name: m.name,
-              parameter_size: m.details?.parameter_size || "unknown",
-              origin: "Local PC",
-            }));
+            // Filter only local models with a digest and no "cloud" in name
+            const mod = localRes.data.models
+              .filter((m) => {
+                const nameLower = (m.name || "").toLowerCase();
+                return m.digest && !nameLower.includes("cloud");
+              })
+              .map((m) => ({
+                name: m.name,
+                parameter_size: m.details?.parameter_size || "unknown",
+                origin: "Local PC",
+              }));
             setModels(mod);
             setStep("setup");
             setIsDetecting(false);
@@ -680,52 +711,66 @@ function App() {
 
   const handleSend = () => {
     if (!inputValue) return;
+    // Use the nickname with a suffix to identify the human controller
+    const senderName = name ? `${name}_guardian` : "Human";
     socket.emit("message", {
       text: inputValue,
-      sender: "Human",
+      sender: senderName,
       room_id: selectedTopic,
     });
     setInputValue("");
   };
 
   if (step === "topics") {
+    const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
-        <header className="flex flex-col items-center py-6 md:py-10 px-4 text-center w-full">
+        {/* Header Section (Top Left) */}
+        <header className="relative flex flex-col md:flex-row items-start md:items-center gap-6 pt-10 pb-10 px-6 md:px-12 w-full border-b border-white/5 bg-white/[0.01]">
+          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-purple-600/5 to-transparent -z-10" />
+
           <motion.img
             src={ROBOT_IMAGE}
             alt="Happy Robot"
-            className="w-32 h-32 md:w-48 md:h-48 object-contain mb-4"
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
+            className="w-20 h-20 md:w-28 md:h-28 object-contain z-10 drop-shadow-[0_0_20px_rgba(168,85,247,0.2)]"
+            initial={{ x: -20, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
             transition={{ duration: 0.8 }}
           />
-          <h1 className="text-3xl md:text-5xl font-black bg-clip-text text-transparent bg-gradient-to-r from-purple-400 to-pink-500 mb-2">
-            ChatLoom
-          </h1>
-          <p className="text-gray-500 text-sm md:text-lg max-w-lg italic font-medium mb-6">
-            "Your Local AI Chat Rooms for Human and Machines."
-          </p>
+
+          <div className="flex-1 text-left">
+            <motion.h1
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="text-4xl md:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500 mb-1 tracking-tighter"
+            >
+              ChatLoom
+            </motion.h1>
+            <p className="text-gray-400 text-xs md:text-sm max-w-lg italic font-medium leading-relaxed">
+              "The intersection of human consciousness and machine intelligence,
+              hosted on your own hardware."
+            </p>
+          </div>
 
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1 }}
-            className="flex flex-wrap justify-center gap-3"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.3 }}
+            className="flex flex-wrap gap-3 z-10"
           >
             <a
               href="/scripts/setup_windows.bat"
               download
-              className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-blue-400"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-blue-400"
             >
-              <Monitor size={14} /> One-Click Setup (Win)
+              <Monitor size={14} /> Setup (Win)
             </a>
             <a
               href="/scripts/setup_unix.sh"
               download
-              className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-full transition-all text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-pink-400"
+              className="flex items-center gap-2 px-4 py-2 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-pink-400"
             >
-              <Cpu size={14} /> One-Click Setup (Mac/Linux)
+              <Cpu size={14} /> Setup (Unix)
             </a>
           </motion.div>
         </header>
@@ -778,29 +823,63 @@ function App() {
           </div>
 
           {/* Pagination */}
-          <div className="flex items-center gap-4 md:gap-6 bg-white/5 p-2 rounded-xl border border-white/5 shadow-2xl backdrop-blur-md sticky bottom-4">
+          <div className="flex items-center gap-6 bg-white/[0.03] p-1.5 rounded-2xl border border-white/5 shadow-2xl backdrop-blur-xl">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="p-2.5 md:p-3 hover:bg-white/10 disabled:opacity-20 rounded-lg transition-all"
+              className="p-3 hover:bg-white/5 disabled:opacity-10 rounded-xl transition-all group"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft
+                size={24}
+                className="group-hover:-translate-x-1 transition-transform"
+              />
             </button>
-            <div className="flex flex-col items-center">
-              <span className="text-[10px] font-black text-purple-500 uppercase tracking-[0.2em] mb-0.5">
-                Page
+            <div className="flex flex-col items-center px-4">
+              <span className="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.3em] mb-1">
+                Progress
               </span>
-              <span className="text-lg md:text-xl font-black leading-none">
-                {page}
+              <span className="text-sm font-black tabular-nums tracking-tighter">
+                PAGE {page} <span className="text-gray-600 px-1">/</span>{" "}
+                {totalPages}
               </span>
             </div>
             <button
               onClick={() => setPage((p) => p + 1)}
               disabled={page * 12 >= totalTopics}
-              className="p-2.5 md:p-3 hover:bg-white/10 disabled:opacity-20 rounded-lg transition-all"
+              className="p-3 hover:bg-white/5 disabled:opacity-10 rounded-xl transition-all group"
             >
-              <ChevronRight size={20} />
+              <ChevronRight
+                size={24}
+                className="group-hover:translate-x-1 transition-transform"
+              />
             </button>
+          </div>
+
+          {/* FAQ Section */}
+          <div className="w-full max-w-4xl mt-24 mb-12">
+            <div className="flex items-center gap-4 mb-10">
+              <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/10" />
+              <h2 className="text-sm font-black uppercase tracking-[0.4em] text-gray-500">
+                Frequently Asked
+              </h2>
+              <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {FAQ_ITEMS.map((item, idx) => (
+                <div
+                  key={idx}
+                  className="bg-white/[0.02] border border-white/5 p-6 rounded-2xl hover:border-purple-500/30 transition-all cursor-default group"
+                >
+                  <h3 className="text-purple-400 font-bold mb-2 group-hover:text-purple-300 transition-colors">
+                    {item.q}
+                  </h3>
+                  <p className="text-sm text-gray-400 leading-relaxed font-medium">
+                    {item.a}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -980,8 +1059,14 @@ function App() {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="glass p-5 md:p-7 rounded-[2rem] w-full max-w-4xl border border-white/10 shadow-2xl max-h-[95vh] overflow-y-auto custom-scrollbar"
+          className="relative glass p-5 md:p-7 rounded-[2rem] w-full max-w-4xl border border-white/10 shadow-2xl max-h-[95vh] overflow-y-auto custom-scrollbar"
         >
+          <button
+            onClick={() => setStep("topics")}
+            className="absolute top-6 right-6 p-2 hover:bg-white/5 rounded-full transition-all text-gray-500 hover:text-white"
+          >
+            <X size={20} />
+          </button>
           <div className="flex items-center gap-3 mb-6">
             <div className="p-2 bg-purple-500/20 rounded-xl">
               <Bot className="text-purple-400" size={24} />
@@ -1349,7 +1434,7 @@ function App() {
         </div>
 
         <div className="flex-1 overflow-y-auto py-6 px-4">
-          <div className="max-w-4xl mx-auto space-y-[2px]">
+          <div className="w-full space-y-[2px]">
             {messages.map((msg, idx) => (
               <ChatMessage key={idx} msg={msg} />
             ))}
@@ -1388,12 +1473,12 @@ function App() {
             </motion.div>
             <div className="min-w-0">
               <h2 className="text-sm font-black truncate leading-none mb-1.5 text-white tracking-widest uppercase">
-                {name}
+                {name ? `${name}_guardian` : "Human_guardian"}
               </h2>
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                 <span className="text-[8px] text-blue-400 font-black uppercase tracking-widest bg-blue-500/10 px-1.5 py-0.5 rounded-sm border border-blue-500/20">
-                  Human Guardian
+                  Guardian Operator
                 </span>
               </div>
             </div>
