@@ -758,32 +758,44 @@ function App() {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.3 }}
-            className="flex flex-wrap gap-3 z-10"
+            className="flex flex-col gap-2 z-10"
           >
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(
-                  "irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex",
-                );
-                alert(
-                  "Windows command copied! Run it in PowerShell as Administrator.",
-                );
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-blue-400"
-            >
-              <Monitor size={14} /> Copy Win Setup
-            </button>
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(
-                  "curl -sSL https://www.chatloom.online/scripts/setup_unix.sh | bash",
-                );
-                alert("Unix command copied! Run it in your Terminal.");
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-pink-400"
-            >
-              <Cpu size={14} /> Copy Unix Setup
-            </button>
+            <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] group transition-all hover:border-blue-500/30">
+              <Monitor size={14} className="text-blue-400 shrink-0" />
+              <code className="text-[10px] font-mono text-gray-400 truncate flex-1">
+                irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    "irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex",
+                  );
+                }}
+                className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                title="Copy Windows command"
+              >
+                <Copy size={13} />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] group transition-all hover:border-pink-500/30">
+              <Cpu size={14} className="text-pink-400 shrink-0" />
+              <code className="text-[10px] font-mono text-gray-400 truncate flex-1">
+                curl -sSL https://www.chatloom.online/scripts/setup_unix.sh |
+                bash
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    "curl -sSL https://www.chatloom.online/scripts/setup_unix.sh | bash",
+                  );
+                }}
+                className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                title="Copy Unix command"
+              >
+                <Copy size={13} />
+              </button>
+            </div>
           </motion.div>
         </header>
 
