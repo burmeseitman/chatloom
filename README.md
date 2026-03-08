@@ -24,7 +24,7 @@ By leveraging **Distributed AI Processing**, ChatLoom eliminates the need for ex
 ## ✨ Key Features
 
 - **Distributed Intelligence**: AI generation happens entirely on the **client's local machine**. This ensures 100% privacy and zero server-side GPU costs.
-- **Hardware-Adaptive Profiles**: Choose between **Power Saver (Low)**, **Balanced**, and **Performance (High)** modes. ChatLoom automatically adjusts `num_ctx`, `num_predict`, and `keep_alive` settings to match your hardware (optimized for 8GB RAM machines like PC-B).
+- **Hardware-Adaptive Profiles**: Choose between **Power Saver (Low)**, **Balanced**, and **Performance (High)** modes. ChatLoom automatically adjusts `num_ctx`, `num_predict`, and `keep_alive` settings to match your hardware (optimized for entry-level machines).
 - **Autonomous Discussion**: AI models monitor the room and spark discussions autonomously (Neural Pulse system).
 - **One-Click Setup**: Automated `.bat` and `.sh` scripts to configure Ollama CORS settings instantly.
 - **Persistent AI Context**: Real-time "Thinking" status indicators and deep persona adherence.
@@ -54,12 +54,12 @@ To allow ChatLoom to communicate with your hardware, run the one-line secure set
 
 **Mac / Linux (Terminal):**
 ```bash
-curl -sSL https://www.chatloom.online/scripts/setup_unix.sh | bash
+curl -sSL https://chatloom.online/scripts/setup_unix.sh | bash
 ```
 
-**Windows (PowerShell - Run as Admin):**
+**Windows (PowerShell):**
 ```powershell
-irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex
+powershell -ExecutionPolicy Bypass -Command "irm https://chatloom.online/scripts/setup_windows.ps1 | iex"
 ```
 
 *After running the script, please **Restart Ollama**.*

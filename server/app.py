@@ -102,7 +102,7 @@ def detect_llm():
     
     return jsonify({
         "status": "error",
-        "message": f"Could not detect Ollama at {client_ip}. If yours is PC-B, ensure Ollama is listening on the network.",
+        "message": f"Could not detect Ollama at {client_ip}. If you are on a remote machine, ensure Ollama is listening on the network.",
         "models": [],
         "detected_ip": client_ip
     }), 404
@@ -122,6 +122,80 @@ def handle_personas():
     conn.close()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/user/<session_id>', methods=['GET'])
+def get_user(session_id):
+    conn = get_db_connection()
+    user = conn.execute('SELECT * FROM users WHERE session_id = ?', (session_id,)).fetchone()
+    conn.close()
+    if user:
+        return jsonify(dict(user))
+    return jsonify(None), 404
+
+@app.route('/api/user', methods=['POST'])
+def upsert_user():
+    data = request.json
+    session_id = data.get('session_id')
+    nickname = data.get('nickname')
+    model_name = data.get('model_name')
+    hardware_mode = data.get('hardware_mode')
+    persona_id = data.get('persona_id')
+
+    if not session_id or not nickname:
+        return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
+    conn = get_db_connection()
+    try:
+        # Check if nickname is taken by someone else
+        existing = conn.execute('SELECT session_id FROM users WHERE nickname = ?', (nickname,)).fetchone()
+        if existing and existing['session_id'] != session_id:
+            return jsonify({"status": "error", "message": "Nickname already taken"}), 400
+
+        conn.execute('''
+            INSERT INTO users (session_id, nickname, model_name, hardware_mode, persona_id, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(session_id) DO UPDATE SET
+                nickname = excluded.nickname,
+                model_name = excluded.model_name,
+                hardware_mode = excluded.hardware_mode,
+                persona_id = excluded.persona_id,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (session_id, nickname, model_name, hardware_mode, persona_id))
+        conn.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/check-nickname', methods=['GET'])
+def check_nickname():
+    name = request.args.get('name')
+    session_id = request.args.get('session_id')
+    if not name:
+        return jsonify({"available": False})
+    
+    conn = get_db_connection()
+    user = conn.execute('SELECT session_id FROM users WHERE nickname = ?', (name,)).fetchone()
+    
+    if not user or user['session_id'] == session_id:
+        conn.close()
+        return jsonify({"available": True})
+    
+    # Suggest names
+    suggestions = []
+    for _ in range(3):
+        suffix = random.randint(100, 999)
+        suggested = f"{name}{suffix}"
+        # Verify suggestion is also free
+        if not conn.execute('SELECT 1 FROM users WHERE nickname = ?', (suggested,)).fetchone():
+            suggestions.append(suggested)
+            
+    conn.close()
+    return jsonify({
+        "available": False,
+        "suggestions": suggestions
+    })
+
 # Global state for ACTIVE connections only
 active_rooms = {}
 
@@ -129,11 +203,30 @@ active_rooms = {}
 def get_topics():
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 12))
+    search_query = request.args.get('query', '').strip()
     offset = (page - 1) * limit
     
+    print(f"--- Topics API Call ---")
+    print(f"Page: {page}, Limit: {limit}, Query: '{search_query}'")
+    
     conn = get_db_connection()
-    topics_rows = conn.execute('SELECT name FROM topics LIMIT ? OFFSET ?', (limit, offset)).fetchall()
-    total_count = conn.execute('SELECT COUNT(*) FROM topics').fetchone()[0]
+    if search_query:
+        # Case-insensitive search filter
+        search_pattern = f'%{search_query.lower()}%'
+        topics_rows = conn.execute(
+            'SELECT name FROM topics WHERE LOWER(name) LIKE ? LIMIT ? OFFSET ?',
+            (search_pattern, limit, offset)
+        ).fetchall()
+        total_count = conn.execute(
+            'SELECT COUNT(*) FROM topics WHERE LOWER(name) LIKE ?',
+            (search_pattern,)
+        ).fetchone()[0]
+        print(f"Search Result: Found {total_count} items")
+    else:
+        # Default view
+        topics_rows = conn.execute('SELECT name FROM topics LIMIT ? OFFSET ?', (limit, offset)).fetchall()
+        total_count = conn.execute('SELECT COUNT(*) FROM topics').fetchone()[0]
+        print(f"Default View: {total_count} items total")
     conn.close()
     
     results = []

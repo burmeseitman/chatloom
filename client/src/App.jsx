@@ -79,12 +79,12 @@ const FAQ_ITEMS = [
 
 const HARDWARE_PROFILES = {
   low: {
-    label: "Power Saver (PC-B)",
+    label: "Power Saver (Lite)",
     icon: "Zap",
     num_predict: 150, // Increased for complete thoughts
     num_ctx: 1024,
     timeout: 240000, // 4 mins
-    description: "Compact answers. Optimized for PC-B hardware.",
+    description: "Compact answers. Optimized for entry-level hardware.",
   },
   balanced: {
     label: "Balanced",
@@ -180,6 +180,7 @@ function App() {
   );
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [activeParticipants, setActiveParticipants] = useState([]);
   const [status, setStatus] = useState("Exploring topics...");
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -213,14 +214,111 @@ function App() {
     return id;
   });
 
+  const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
+  const [isCheckingNickname, setIsCheckingNickname] = useState(false);
+  const [nicknameError, setNicknameError] = useState("");
+
   const chatEndRef = useRef(null);
 
-  // Fetch topics
+  // Load persistent user profile
   useEffect(() => {
-    if (step === "topics") {
-      fetchTopics();
+    const fetchProfile = async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/user/${sessionId}`);
+        if (res.data) {
+          setName(res.data.nickname);
+          setHardwareMode(res.data.hardware_mode || "balanced");
+          // Persona and Model will be set after they are loaded
+          localStorage.setItem("chat_name", res.data.nickname);
+          localStorage.setItem(
+            "chat_hardware_mode",
+            res.data.hardware_mode || "balanced",
+          );
+        }
+      } catch (e) {
+        console.log("No existing profile found or error fetching.");
+      }
+    };
+    fetchProfile();
+  }, [sessionId]);
+
+  // Handle nickname availability check
+  useEffect(() => {
+    if (!name || name.length < 2 || step !== "setup") {
+      setNicknameError("");
+      setNicknameSuggestions([]);
+      return;
     }
-  }, [step, page]);
+
+    const timer = setTimeout(async () => {
+      setIsCheckingNickname(true);
+      try {
+        const res = await axios.get(
+          `${BACKEND_URL}/api/check-nickname?name=${encodeURIComponent(name)}&session_id=${sessionId}`,
+        );
+        if (!res.data.available) {
+          setNicknameError("This nickname is already in use.");
+          setNicknameSuggestions(res.data.suggestions || []);
+        } else {
+          setNicknameError("");
+          setNicknameSuggestions([]);
+        }
+      } catch (e) {
+        console.error("Failed to check nickname");
+      } finally {
+        setIsCheckingNickname(false);
+      }
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [name, step, sessionId]);
+
+  // Sync persona and model when they become available after profile load
+  useEffect(() => {
+    const syncProfileDeps = async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/user/${sessionId}`);
+        if (res.data) {
+          if (personas.length > 0 && res.data.persona_id) {
+            const p = personas.find((p) => p.id === res.data.persona_id);
+            if (p) setSelectedPersona(p);
+          }
+          if (models.length > 0 && res.data.model_name) {
+            const m = models.find((m) => m.name === res.data.model_name);
+            if (m) setSelectedModel(m);
+          }
+        }
+      } catch (e) {}
+    };
+    if (personas.length > 0 || models.length > 0) {
+      syncProfileDeps();
+    }
+  }, [personas, models, sessionId]);
+
+  // Consolidated Fetch Effect
+  useEffect(() => {
+    if (step !== "topics") return;
+
+    // Use current search query if it meets the criteria, otherwise empty
+    const activeQuery = searchQuery.length >= 2 ? searchQuery : "";
+
+    // If typing, we wait. If not typing or just mounted, we fetch.
+    const timer = setTimeout(
+      () => {
+        fetchTopics(page, activeQuery);
+      },
+      searchQuery.length > 0 ? 400 : 0,
+    );
+
+    return () => clearTimeout(timer);
+  }, [step, page, searchQuery]);
+
+  // Reset page when search query changes significantly
+  useEffect(() => {
+    if (searchQuery.length >= 2 || searchQuery.length === 0) {
+      setPage(1);
+    }
+  }, [searchQuery]);
 
   useEffect(() => {
     if (step === "setup") {
@@ -394,23 +492,24 @@ function App() {
     return <Hash size={20} />;
   };
 
-  const fetchTopics = async () => {
+  const fetchTopics = async (targetPage = 1, query = "") => {
     setIsTopicsLoading(true);
     try {
-      // Small delay for smooth transition feel
       const startTime = Date.now();
       const res = await axios.get(
-        `${BACKEND_URL}/api/topics?page=${page}&limit=12`,
+        `${BACKEND_URL}/api/topics?page=${targetPage}&limit=12&query=${encodeURIComponent(query)}`,
       );
       const endTime = Date.now();
 
-      // Ensure the skeleton is visible for at least 300ms for visual stability
       const waitTime = Math.max(0, 300 - (endTime - startTime));
       setTimeout(() => {
         setTopics(res.data.topics);
         setTotalTopics(res.data.total);
         setIsTopicsLoading(false);
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        // Only scroll if we are not actively searching to avoid jumping
+        if (query.length === 0) {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
       }, waitTime);
     } catch (e) {
       console.error("Failed to fetch topics", e);
@@ -595,7 +694,7 @@ function App() {
       setStep("setup");
     });
 
-    // Generation Queue to prevent PC-B/Low-end hardware crashes
+    // Generation Queue to prevent Crashes on entry-level hardware
     const genQueue = [];
     let isProcessing = false;
 
@@ -690,6 +789,17 @@ function App() {
     localStorage.setItem("chat_model", JSON.stringify(selectedModel));
     localStorage.setItem("chat_step", "chat");
 
+    // Persist to DB
+    axios
+      .post(`${BACKEND_URL}/api/user`, {
+        session_id: sessionId,
+        nickname: name,
+        model_name: selectedModel.name,
+        hardware_mode: hardwareMode,
+        persona_id: selectedPersona.id,
+      })
+      .catch((err) => console.error("Failed to persist user config", err));
+
     socket.emit("join", {
       name,
       model: selectedModel.name,
@@ -723,11 +833,24 @@ function App() {
     setInputValue("");
   };
 
+  const [userPlatform, setUserPlatform] = useState("unknown");
+
+  useEffect(() => {
+    const ua = navigator.userAgent.toLowerCase();
+    if (ua.indexOf("win") !== -1) setUserPlatform("windows");
+    else if (ua.indexOf("mac") !== -1 || ua.indexOf("linux") !== -1)
+      setUserPlatform("unix");
+  }, []);
+
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
+    const winCmd =
+      'powershell -ExecutionPolicy Bypass -Command "irm https://chatloom.online/scripts/setup_windows.ps1 | iex"';
+    const unixCmd =
+      "curl -sSL https://chatloom.online/scripts/setup_unix.sh | bash";
+
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
-        {/* Header Section (Top Left) */}
         <header className="relative flex flex-col md:flex-row items-start md:items-center gap-6 pt-10 pb-10 px-6 md:px-12 w-full border-b border-white/5 bg-white/[0.01]">
           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-purple-600/5 to-transparent -z-10" />
 
@@ -760,47 +883,90 @@ function App() {
             transition={{ delay: 0.3 }}
             className="flex flex-col gap-2 z-10"
           >
-            <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] group transition-all hover:border-blue-500/30">
-              <Monitor size={14} className="text-blue-400 shrink-0" />
-              <code className="text-[10px] font-mono text-gray-400 truncate flex-1">
-                irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex
-              </code>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    "irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex",
-                  );
-                }}
-                className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
-                title="Copy Windows command"
-              >
-                <Copy size={13} />
-              </button>
+            <div className="flex items-center gap-2 mb-1 px-1">
+              <span className="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">
+                Ollama One-Click Setup
+              </span>
+              <div className="h-px w-8 bg-purple-500/20" />
             </div>
+            {(userPlatform === "windows" || userPlatform === "unknown") && (
+              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-blue-500/30">
+                <Monitor size={14} className="text-blue-400 shrink-0" />
+                <code
+                  className="text-[10px] font-mono text-gray-400 truncate flex-1"
+                  title={winCmd}
+                >
+                  {winCmd}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(winCmd);
+                  }}
+                  className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                  title="Copy Windows command"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+            )}
 
-            <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] group transition-all hover:border-pink-500/30">
-              <Cpu size={14} className="text-pink-400 shrink-0" />
-              <code className="text-[10px] font-mono text-gray-400 truncate flex-1">
-                curl -sSL https://www.chatloom.online/scripts/setup_unix.sh |
-                bash
-              </code>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    "curl -sSL https://www.chatloom.online/scripts/setup_unix.sh | bash",
-                  );
-                }}
-                className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
-                title="Copy Unix command"
-              >
-                <Copy size={13} />
-              </button>
-            </div>
+            {(userPlatform === "unix" || userPlatform === "unknown") && (
+              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] group transition-all hover:border-pink-500/30">
+                <Cpu size={14} className="text-pink-400 shrink-0" />
+                <code
+                  className="text-[10px] font-mono text-gray-400 truncate flex-1"
+                  title={unixCmd}
+                >
+                  {unixCmd}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(unixCmd);
+                  }}
+                  className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                  title="Copy Unix command"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
+            )}
           </motion.div>
         </header>
 
-        <div className="px-4 md:px-8 w-full flex flex-col items-center pb-12">
+        <div className="px-4 md:px-8 w-full flex flex-col items-center pt-20 pb-12">
           <div className="w-full max-w-7xl mb-10">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-2 bg-purple-500/10 rounded-lg">
+                  <Globe size={16} className="text-purple-400" />
+                </div>
+                <h2 className="text-sm font-black uppercase tracking-[0.3em] text-gray-400">
+                  Browse Discussion Topics
+                </h2>
+              </div>
+
+              {/* Search Box */}
+              <div className="relative group w-full md:w-80">
+                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                  <Search
+                    size={16}
+                    className={`transition-colors ${searchQuery.length > 0 ? "text-purple-400" : "text-gray-500"}`}
+                  />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search topics..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-white/[0.03] border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500/50 focus:bg-white/[0.06] transition-all placeholder:text-gray-600"
+                />
+                {searchQuery.length > 0 && searchQuery.length < 2 && (
+                  <div className="absolute -bottom-5 left-1 text-[8px] font-bold text-gray-500 uppercase tracking-widest animate-pulse">
+                    Type 2+ letters...
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {isTopicsLoading
                 ? Array.from({ length: 12 }).map((_, i) => (
@@ -908,48 +1074,57 @@ function App() {
         </div>
 
         {/* Powered By Section */}
-        <div className="mt-12 mb-8 opacity-20 hover:opacity-100 transition-opacity flex flex-wrap justify-center gap-6 items-center grayscale hover:grayscale-0">
-          <div className="flex items-center gap-2">
-            <Rocket size={14} className="text-blue-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-              Vite
-            </span>
+        <div className="w-full max-w-4xl px-4 mt-12 mb-8">
+          <div className="flex items-center gap-4 mb-8">
+            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/5" />
+            <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-600">
+              Distributed Infrastructure
+            </h2>
+            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/5" />
           </div>
-          <div className="flex items-center gap-2">
-            <Globe size={14} className="text-cyan-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-              React
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Shield size={14} className="text-teal-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-              Tailwind
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Terminal size={14} className="text-yellow-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-              Python
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Zap size={14} className="text-orange-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-              Socket.io
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Database size={14} className="text-blue-500" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-              SQLite
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Brain size={14} className="text-purple-400" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-              Ollama
-            </span>
+          <div className="mt-4 flex flex-wrap justify-center gap-x-8 gap-y-6 items-center grayscale opacity-40 hover:grayscale-0 hover:opacity-100 transition-all duration-700">
+            <div className="flex items-center gap-2">
+              <Rocket size={14} className="text-blue-400" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                Vite
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Globe size={14} className="text-cyan-400" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                React
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Shield size={14} className="text-teal-400" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                Tailwind
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Terminal size={14} className="text-yellow-400" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                Python
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Zap size={14} className="text-orange-400" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                Socket.io
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Database size={14} className="text-blue-500" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                SQLite
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Brain size={14} className="text-purple-400" />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+                Ollama
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -1142,8 +1317,39 @@ function App() {
                     setJoinError("");
                   }}
                   placeholder="e.g. JARVIS-9000"
-                  className={`w-full bg-white/5 border ${joinError ? "border-red-500/50" : "border-white/10"} p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-500/50 transition-all text-lg font-bold`}
+                  className={`w-full bg-white/5 border ${nicknameError || joinError ? "border-red-500/50" : "border-white/10"} p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-500/50 transition-all text-lg font-bold`}
                 />
+
+                {isCheckingNickname && (
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-purple-400 font-bold animate-pulse">
+                    <RefreshCw size={10} className="animate-spin" /> Verifying
+                    availability...
+                  </div>
+                )}
+
+                {nicknameError && !isCheckingNickname && (
+                  <div className="mt-2 space-y-2">
+                    <p className="text-[10px] text-red-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                      <AlertCircle size={10} /> {nicknameError}
+                    </p>
+                    {nicknameSuggestions.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        <span className="text-[9px] text-gray-500 uppercase font-bold self-center">
+                          Try:
+                        </span>
+                        {nicknameSuggestions.map((s) => (
+                          <button
+                            key={s}
+                            onClick={() => setName(s)}
+                            className="text-[9px] bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-full transition-all font-bold"
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -1309,7 +1515,13 @@ function App() {
           <div className="mt-8">
             <button
               onClick={handleJoin}
-              disabled={!name || !selectedModel || !selectedPersona}
+              disabled={
+                !name ||
+                !!nicknameError ||
+                isCheckingNickname ||
+                !selectedModel ||
+                !selectedPersona
+              }
               className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl font-black text-lg hover:shadow-purple-500/20 active:scale-[0.98] transition-all shadow-lg disabled:opacity-20 flex items-center justify-center gap-3 uppercase tracking-tighter"
             >
               Initialize Agent <Send size={20} />

@@ -53,6 +53,19 @@ def init_db():
     )
     ''')
 
+    # Create users table for persistent configurations
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS users (
+        session_id TEXT PRIMARY KEY,
+        nickname TEXT UNIQUE NOT NULL,
+        model_name TEXT,
+        hardware_mode TEXT,
+        persona_id INTEGER,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (persona_id) REFERENCES personas(id)
+    )
+    ''')
+
     # Insert default settings
     cursor.execute("SELECT COUNT(*) FROM settings")
     if cursor.fetchone()[0] == 0:
