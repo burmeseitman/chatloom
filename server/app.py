@@ -60,7 +60,7 @@ def get_setting(key, default=None):
 
 @app.route('/api/detect-llm', methods=['GET'])
 def detect_llm():
-    """Strictly detect models for the CURRENT PC only."""
+    """Detect models from the Main Server PC. Serves as a bridge when client cannot reach local Ollama."""
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if client_ip and ',' in client_ip:
         client_ip = client_ip.split(',')[0].strip()
@@ -72,37 +72,20 @@ def detect_llm():
     print(f"--- Detection Start ---")
     print(f"Requester IP: {client_ip}")
 
-    # Case 1: Requester is the Main Server PC
-    if not client_ip or client_ip in ['127.0.0.1', 'localhost', '::1']:
-        print("Action: Scanning Main PC (Local)")
-        models = get_ollama_models(OLLAMA_URL)
-        return jsonify({
-            "status": "success" if models else "error",
-            "models": models,
-            "origin": "Main PC"
-        })
-
-    # Case 2: Requester is a Remote PC
-    print(f"Action: Scanning Client PC at {client_ip}")
-    remote_url = f"http://{client_ip}:11434"
-    try:
-        # We use a slightly longer timeout for remote network detection
-        response = requests.get(f"{remote_url}/api/tags", timeout=5)
-        if response.status_code == 200:
-            models = response.json().get('models', [])
-            suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models]
-            print(f"Success: Found {len(suitable)} models at {client_ip}")
-            return jsonify({
-                "status": "success",
-                "models": suitable,
-                "origin": "Remote Node"
-            })
-    except Exception as e:
-        print(f"Failure: Could not reach {remote_url}. Error: {str(e)}")
+    # Fallback/Primary is always the Main Server's Ollama, because generate_bridge uses it anyway.
+    print("Action: Scanning Main PC (Local)")
+    models = get_ollama_models(OLLAMA_URL)
     
+    if models:
+        return jsonify({
+            "status": "success",
+            "models": models,
+            "origin": "Main Server PC"
+        })
+        
     return jsonify({
         "status": "error",
-        "message": f"Could not detect Ollama at {client_ip}. If you are on a remote machine, ensure Ollama is listening on the network.",
+        "message": f"Could not detect Ollama on the server. Please ensure Ollama is running.",
         "models": [],
         "detected_ip": client_ip
     }), 404
