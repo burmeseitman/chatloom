@@ -65,8 +65,8 @@ echo "🚀 Starting secure configuration..."
 echo ""
 
 # Official Secured Domains only (Strictly locked to ChatLoom)
-# We include both https and http variations to prevent 403 protocol mismatch.
-SECURE_ORIGINS="https://chatloom.online,https://www.chatloom.online,https://*.chatloom.online,http://chatloom.online,http://www.chatloom.online"
+# '*' wildcard was removed to prevent malicious Cross-Site Request Forgery (CSRF).
+SECURE_ORIGINS="https://chatloom.online,https://www.chatloom.online,https://*.chatloom.online,http://chatloom.online,http://www.chatloom.online,http://localhost"
 OLLAMA_BIND="0.0.0.0:11434"
 
 # --- Persistency (Shell Config) ---
