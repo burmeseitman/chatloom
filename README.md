@@ -30,6 +30,13 @@ By leveraging **Distributed AI Processing**, ChatLoom eliminates the need for ex
 - **Persistent AI Context**: Real-time "Thinking" status indicators and deep persona adherence.
 - **Zero-VPS Deployment**: Optimized for deployment on **Cloudflare Tunnel** + **Cloudflare Pages**.
 
+## 🏗️ Architecture: PC-as-a-VPS (Cloudflare Tunnel)
+You don't need a paid VPS. You can host the ChatLoom backend on your home Windows/Mac PC securely using Cloudflare Tunnels:
+1. **Frontend**: Deploy `client/dist` to Cloudflare Pages.
+2. **Backend**: Run `python app.py` on your PC (Port 5001).
+3. **Tunnel**: Run `cloudflared tunnel --url http://localhost:5001`. This creates a secure public URL (e.g., `https://api.yourdomain.com`) that points to your PC without opening router ports.
+4. **Environment**: Set `VITE_BACKEND_URL` in Cloudflare Pages to your Tunnel URL.
+
 ## 🛠️ Tech Stack
 
 - **Frontend**: React 18, Vite, Tailwind CSS, Framer Motion, Axios.
