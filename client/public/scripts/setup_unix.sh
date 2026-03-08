@@ -11,6 +11,15 @@ echo "------------------------------------------"
 echo ""
 
 # --- Pre-scan for Ollama ---
+# Fix common permission issues if .ollama exists (Silent Fix)
+if [ -d "$HOME/.ollama" ]; then
+    if [ ! -w "$HOME/.ollama" ]; then
+        echo "🔧 Fixing .ollama directory permissions..."
+        sudo chown -R $(whoami) "$HOME/.ollama" &>/dev/null
+        sudo chmod -R 755 "$HOME/.ollama" &>/dev/null
+    fi
+fi
+
 OLLAMA_BIN=""
 if command -v ollama &> /dev/null; then
     OLLAMA_BIN="ollama"

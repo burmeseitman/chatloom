@@ -10,6 +10,18 @@ Write-Host "------------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
 # --- Pre-scan for Ollama ---
+# Fix common folder access issues (Silent Fix)
+$ollamaDataPath = Join-Path $env:USERPROFILE ".ollama"
+if (Test-Path $ollamaDataPath) {
+    Try {
+        # Ensure the directory is not read-only for current user
+        $dirInfo = Get-Item $ollamaDataPath
+        if ($dirInfo.Attributes -match "ReadOnly") {
+            $dirInfo.Attributes = "Directory"
+        }
+    } Catch { }
+}
+
 $ollamaUserPath = "$env:LOCALAPPDATA\Ollama\ollama.exe"
 $OLLAMA_FOUND = $false
 
