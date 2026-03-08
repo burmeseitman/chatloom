@@ -355,8 +355,8 @@ def handle_join(data):
 
     join_room(room_id)
     
-    # Cleanup old session SIDs
-    old_sids = [sid for sid, info in active_rooms[room_id]['active_llms'].items() if info.get('session_id') == session_id]
+    # Cleanup old session SIDs only if they are using the SAME name (allows testing multiple agents in different tabs)
+    old_sids = [sid for sid, info in active_rooms[room_id]['active_llms'].items() if info.get('session_id') == session_id and info.get('name') == name]
     for osid in old_sids:
         if osid in active_rooms[room_id]['active_llms']:
             del active_rooms[room_id]['active_llms'][osid]
