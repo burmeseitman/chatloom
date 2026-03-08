@@ -58,11 +58,15 @@ Write-Host ""
 $SECURE_ORIGINS = "https://chatloom.online, https://www.chatloom.online, https://*.chatloom.online"
 $OLLAMA_BIND = "0.0.0.0:11434"
 
-# Apply persistency for the user
+# Apply persistency for the user Registry
 Try {
     [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "$OLLAMA_BIND", "User")
     [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "$SECURE_ORIGINS", "User")
     
+    # --- IMPORTANT: Inject into current PowerShell session for the restart process ---
+    $env:OLLAMA_HOST = "$OLLAMA_BIND"
+    $env:OLLAMA_ORIGINS = "$SECURE_ORIGINS"
+
     Write-Host "🔄 Refreshing Ollama session..." -ForegroundColor Cyan
     
     # Check if Ollama is running to restart it

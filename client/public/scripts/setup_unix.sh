@@ -76,6 +76,10 @@ sed -i.bak '/OLLAMA_HOST/d' "$SHELL_CONFIG" 2>/dev/null
 echo "export OLLAMA_HOST=\"$OLLAMA_BIND\"" >> "$SHELL_CONFIG"
 echo "export OLLAMA_ORIGINS=\"$SECURE_ORIGINS\"" >> "$SHELL_CONFIG"
 
+# --- Force inject into current session for the restart process ---
+export OLLAMA_HOST="$OLLAMA_BIND"
+export OLLAMA_ORIGINS="$SECURE_ORIGINS"
+
 # --- Instant Injection for current session ---
 if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "🛡️  Applying instant security policy (macOS)..."
