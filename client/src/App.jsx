@@ -760,20 +760,30 @@ function App() {
             transition={{ delay: 0.3 }}
             className="flex flex-wrap gap-3 z-10"
           >
-            <a
-              href="/scripts/setup_windows.ps1"
-              download
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  "irm https://www.chatloom.online/scripts/setup_windows.ps1 | iex",
+                );
+                alert(
+                  "Windows command copied! Run it in PowerShell as Administrator.",
+                );
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-blue-400"
             >
-              <Monitor size={14} /> Setup (Win)
-            </a>
-            <a
-              href="/scripts/setup_unix.sh"
-              download
+              <Monitor size={14} /> Copy Win Setup
+            </button>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  "curl -sSL https://www.chatloom.online/scripts/setup_unix.sh | bash",
+                );
+                alert("Unix command copied! Run it in your Terminal.");
+              }}
               className="flex items-center gap-2 px-4 py-2 bg-pink-500/10 hover:bg-pink-500/20 border border-pink-500/10 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest text-pink-400"
             >
-              <Cpu size={14} /> Setup (Unix)
-            </a>
+              <Cpu size={14} /> Copy Unix Setup
+            </button>
           </motion.div>
         </header>
 
@@ -1035,7 +1045,7 @@ function App() {
                     1
                   </div>
                   <div className="text-[8px] font-bold text-gray-500 uppercase tracking-widest">
-                    Download
+                    Copy
                   </div>
                 </div>
                 <div className="text-center">
