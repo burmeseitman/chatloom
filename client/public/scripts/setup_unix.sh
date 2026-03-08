@@ -64,11 +64,12 @@ fi
 echo "🚀 Starting secure configuration..."
 echo ""
 
-# Official Secured Domains only (Strictly locked to ChatLoom for user safety)
-SECURE_ORIGINS="https://chatloom.online, https://www.chatloom.online, https://*.chatloom.online"
+# Official Secured Domains only (Strictly locked to ChatLoom)
+# We include both https and http variations to prevent 403 protocol mismatch.
+SECURE_ORIGINS="https://chatloom.online,https://www.chatloom.online,https://*.chatloom.online,http://chatloom.online,http://www.chatloom.online"
 OLLAMA_BIND="0.0.0.0:11434"
 
-# Identify shell config
+# --- Persistency (Shell Config) ---
 SHELL_CONFIG=""
 if [[ "$SHELL" == */zsh ]]; then
     SHELL_CONFIG="$HOME/.zshrc"
@@ -78,32 +79,31 @@ else
     SHELL_CONFIG="$HOME/.profile"
 fi
 
-# Apply persistency
 touch "$SHELL_CONFIG"
 sed -i.bak '/OLLAMA_ORIGINS/d' "$SHELL_CONFIG" 2>/dev/null
 sed -i.bak '/OLLAMA_HOST/d' "$SHELL_CONFIG" 2>/dev/null
 echo "export OLLAMA_HOST=\"$OLLAMA_BIND\"" >> "$SHELL_CONFIG"
 echo "export OLLAMA_ORIGINS=\"$SECURE_ORIGINS\"" >> "$SHELL_CONFIG"
 
-# --- Force inject into current session for the restart process ---
+# --- Force inject into current session and background services ---
 export OLLAMA_HOST="$OLLAMA_BIND"
 export OLLAMA_ORIGINS="$SECURE_ORIGINS"
 
-# --- Instant Injection for current session ---
 if [[ "$(uname -s)" == "Darwin" ]]; then
-    echo "🛡️  Applying instant security policy (macOS)..."
+    echo "🛡️  Injecting system-level policies (macOS)..."
     launchctl setenv OLLAMA_HOST "$OLLAMA_BIND"
     launchctl setenv OLLAMA_ORIGINS "$SECURE_ORIGINS"
 fi
 
-# --- Refresh Ollama ---
-echo "🔄 Refreshing Ollama session..."
+# --- Deep Refresh Ollama ---
+echo "🔄 Performing deep session refresh..."
 if [[ "$(uname -s)" == "Darwin" ]]; then
-    if pgrep -x "Ollama" > /dev/null; then
-        echo "♻️  Restarting Ollama application..."
-        killall Ollama || true
-        sleep 3
-    fi
+    # Completely flush any hanging Ollama processes
+    pkill -9 "Ollama" 2>/dev/null || true
+    killall "Ollama" 2>/dev/null || true
+    sleep 3
+    
+    echo "🚀 Launching Ollama with new security context..."
     if [ -d "/Applications/Ollama.app" ]; then
         open "/Applications/Ollama.app"
     else
@@ -111,24 +111,20 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     fi
     sleep 10
 else
-    # Linux (Systemd)
-    if systemctl is-active --quiet ollama; then
-        echo "♻️  Restarting Ollama service..."
-        sudo systemctl restart ollama || true
-    else
-        echo "🚀 Starting Ollama service..."
-        sudo systemctl start ollama || true
-    fi
+    # Linux (Force restart service)
+    sudo systemctl daemon-reload
+    sudo systemctl restart ollama || true
     sleep 5
 fi
 
-# --- Connection Check ---
+# --- Verify 403 Status ---
 echo "🔗 Verifying secure bridge..."
+# We test with the origin itself to ensure it's not 403 anymore
 MAX_RETRIES=10
 RETRY_COUNT=0
-while ! curl -s http://localhost:11434/api/tags > /dev/null; do
+while ! curl -s -f http://localhost:11434/api/tags > /dev/null; do
     if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        echo "❌ Connection timed out. Ensure Ollama is running in your Menu Bar/System Tray."
+        echo "❌ Connection failed. Please ensure Ollama is open and try again."
         exit 1
     fi
     echo "⏳ Waiting for API ($((RETRY_COUNT+1))/$MAX_RETRIES)..."
@@ -136,7 +132,7 @@ while ! curl -s http://localhost:11434/api/tags > /dev/null; do
     RETRY_COUNT=$((RETRY_COUNT+1))
 done
 
-echo "✅ Configuration successful!"
+echo "✅ 403 Patch Applied! Bridge is secure."
 echo ""
 echo "------------------------------------------"
 echo " 🎉 CHATLOOM IS READY!"

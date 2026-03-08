@@ -66,8 +66,9 @@ if ($mainChoice -notmatch "[Yy]") {
 Write-Host "🚀 Starting secure configuration..." -ForegroundColor Cyan
 Write-Host ""
 
-# Define Secure Origins (Strictly whitelisted for user safety)
-$SECURE_ORIGINS = "https://chatloom.online, https://www.chatloom.online, https://*.chatloom.online"
+# Define Secure Origins (Strictly whitelisted for ChatLoom)
+# We include both https and http variations to prevent 403 protocol mismatch.
+$SECURE_ORIGINS = "https://chatloom.online,https://www.chatloom.online,https://*.chatloom.online,http://chatloom.online,http://www.chatloom.online"
 $OLLAMA_BIND = "0.0.0.0:11434"
 
 # Apply persistency for the user Registry
