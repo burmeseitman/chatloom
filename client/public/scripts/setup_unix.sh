@@ -130,7 +130,7 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     if pgrep -x "Ollama" > /dev/null; then
         echo "♻️  Restarting Ollama to apply new security layers..."
         killall Ollama || true
-        sleep 2
+        sleep 3
     fi
     
     echo "🚀 Starting Ollama application..."
@@ -139,8 +139,8 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
     else
         open -a Ollama || echo "⚠️  Could not start Ollama GUI. Please start it manually."
     fi
-    echo "⏳ Waiting for Ollama to initialize (10s)..."
-    sleep 10
+    echo "⏳ Waiting for Ollama (15s)..."
+    sleep 15
 else
     # Linux...
     if systemctl is-active --quiet ollama; then
@@ -150,30 +150,34 @@ else
         echo "🚀 Starting Ollama service..."
         sudo systemctl start ollama || true
     fi
-    sleep 5
+    sleep 10
 fi
 
 echo ""
-echo "🧠  Checking for local AI Brain (llama3.2:1b)..."
+echo "🧠  Synchronizing AI Brain (llama3.2:1b)..."
 # Try a few times to connect to the API
-MAX_RETRIES=5
+MAX_RETRIES=10
 RETRY_COUNT=0
 while ! curl -s http://localhost:11434/api/tags > /dev/null; do
     if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        echo "❌ Could not connect to Ollama API. Please make sure Ollama is running and try again."
+        echo "❌ Could not connect to Ollama API at localhost:11434."
+        echo "💡 Tip: Make sure the Ollama icon is visible in your Menu Bar/System Tray."
         exit 1
     fi
     echo "⏳ Waiting for Ollama API to be ready... ($((RETRY_COUNT+1))/$MAX_RETRIES)"
-    sleep 5
+    sleep 3
     RETRY_COUNT=$((RETRY_COUNT+1))
 done
 
+# Force a small pull to ensure model integrity
+echo "📥 Ensuring 'llama3.2:1b' is fully loaded..."
+ollama pull llama3.2:1b
+
 if ollama list 2>/dev/null | grep -q "llama3.2:1b"; then
-    echo "✨  Model 'llama3.2:1b' is already available."
+    echo "✨  Model 'llama3.2:1b' is verified and ready!"
 else
-    echo "📥  Pulling small Llama model (llama3.2:1b) for instant start..."
-    ollama pull llama3.2:1b
-    echo "✅  Model downloaded!"
+    echo "❌ Failed to load model. You may need to run 'ollama pull llama3.2:1b' manually."
+    exit 1
 fi
 
 echo ""

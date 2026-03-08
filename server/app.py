@@ -107,6 +107,36 @@ def detect_llm():
         "detected_ip": client_ip
     }), 404
 
+@app.route('/api/generate-bridge', methods=['POST'])
+def generate_bridge():
+    """Bridge for generation when browser-to-ollama direct access is blocked (Mixed Content)."""
+    data = request.json
+    model = data.get('model')
+    prompt = data.get('prompt')
+    system = data.get('system', '')
+    options = data.get('options', {})
+
+    if not model or not prompt:
+        return jsonify({"error": "Missing model or prompt"}), 400
+
+    try:
+        # We proxy the request to the local Ollama instance
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "system": system,
+                "options": options,
+                "stream": False
+            },
+            timeout=180 # Longer timeout for generation
+        )
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        print(f"Bridge Error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/personas', methods=['GET', 'POST'])
 def handle_personas():
     conn = get_db_connection()

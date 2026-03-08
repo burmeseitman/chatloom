@@ -86,7 +86,7 @@ Try {
     if ($ollamaProcess) {
         Write-Host "♻️  Restarting Ollama to apply new security layers..." -ForegroundColor Yellow
         Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 3
     }
 
     Write-Host "🚀 Starting Ollama application..." -ForegroundColor Cyan
@@ -99,13 +99,13 @@ Try {
         Start-Process "ollama" "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
     }
     
-    Write-Host "⏳ Waiting for Ollama to initialize (10s)..." -ForegroundColor Gray
-    Start-Sleep -Seconds 10
+    Write-Host "⏳ Waiting for Ollama (15s)..." -ForegroundColor Gray
+    Start-Sleep -Seconds 15
 
-    Write-Host "🧠  Checking for local AI Brain (llama3.2:1b)..." -ForegroundColor Magenta
+    Write-Host "🧠  Synchronizing AI Brain (llama3.2:1b)..." -ForegroundColor Magenta
     
     # Wait for API to be ready
-    $maxRetries = 5
+    $maxRetries = 10
     $retryCount = 0
     while ($true) {
         Try {
@@ -113,22 +113,26 @@ Try {
             break
         } Catch {
             if ($retryCount -ge $maxRetries) {
-                Write-Host "❌ Could not connect to Ollama API. Please start Ollama manually and try again." -ForegroundColor Red
+                Write-Host "❌ Could not connect to Ollama API at localhost:11434." -ForegroundColor Red
+                Write-Host "💡 Tip: Check your System Tray for the Ollama icon." -ForegroundColor Gray
                 Break
             }
             Write-Host "⏳ Waiting for Ollama API to be ready... ($($retryCount + 1)/$maxRetries)" -ForegroundColor Gray
-            Start-Sleep -Seconds 5
+            Start-Sleep -Seconds 3
             $retryCount++
         }
     }
 
+    # Force pull to ensure integrity
+    Write-Host "📥 Ensuring 'llama3.2:1b' is fully loaded..." -ForegroundColor Cyan
+    ollama pull llama3.2:1b
+
     $modelCheck = ollama list 2>$null | Select-String "llama3.2:1b"
     if ($modelCheck) {
-        Write-Host "✨  Model 'llama3.2:1b' is already available." -ForegroundColor Green
+        Write-Host "✨  Model 'llama3.2:1b' is verified and ready!" -ForegroundColor Green
     } else {
-        Write-Host "📥  Pulling small Llama model (llama3.2:1b) for instant start..." -ForegroundColor Cyan
-        ollama pull llama3.2:1b
-        Write-Host "✅  Model downloaded!" -ForegroundColor Green
+        Write-Host "❌ Failed to load model. Please run 'ollama pull llama3.2:1b' manually." -ForegroundColor Red
+        Exit
     }
     
     Write-Host ""

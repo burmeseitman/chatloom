@@ -718,22 +718,50 @@ function App() {
         console.log(
           `DEBUG: [${hardwareRef.current.toUpperCase()} MODE] Processing ${model}...`,
         );
-        const res = await axios.post(
-          "http://localhost:11434/api/generate",
-          {
-            model,
-            system,
-            prompt,
-            stream: false,
-            options: {
-              num_predict: profile.num_predict,
-              num_ctx: profile.num_ctx,
-              temperature: 0.7,
-            },
-            keep_alive: hardwareRef.current === "low" ? 0 : "5m",
+
+        let res;
+        const generateData = {
+          model,
+          system,
+          prompt,
+          stream: false,
+          options: {
+            num_predict: profile.num_predict,
+            num_ctx: profile.num_ctx,
+            temperature: 0.7,
           },
-          { timeout: profile.timeout },
-        );
+          keep_alive: hardwareRef.current === "low" ? 0 : "5m",
+        };
+
+        // Attempt 1: Shared Browser Access (Localhost)
+        try {
+          res = await axios.post(
+            "http://localhost:11434/api/generate",
+            generateData,
+            { timeout: profile.timeout },
+          );
+        } catch (localErr) {
+          console.warn("Localhost failed, trying 127.0.0.1...", localErr);
+          // Attempt 2: IP Fallback
+          try {
+            res = await axios.post(
+              "http://127.0.0.1:11434/api/generate",
+              generateData,
+              { timeout: profile.timeout },
+            );
+          } catch (ipErr) {
+            console.warn(
+              "Direct access blocked. Using Backend Bridge...",
+              ipErr,
+            );
+            // Attempt 3: Production Bridge (Bypass Mixed Content)
+            res = await axios.post(
+              `${BACKEND_URL}/api/generate-bridge`,
+              generateData,
+              { timeout: profile.timeout + 5000 }, // Extra buffer for server relay
+            );
+          }
+        }
 
         socket.emit("llm_response", {
           room_id,
@@ -741,10 +769,10 @@ function App() {
           metadata,
         });
       } catch (e) {
-        console.error("Queue Task Failed", e);
+        console.error("Critical Generation Failure", e);
         socket.emit("llm_response", {
           room_id,
-          text: `System Error: My brain (${hardwareRef.current}) is overloaded.`,
+          text: `System Alert: AI node connection lost. Is Ollama running?`,
           metadata,
         });
       } finally {
