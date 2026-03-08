@@ -14,31 +14,47 @@ echo " 🐉 Initializing ChatLoom Secure Bridge..."
 echo "------------------------------------------"
 echo ""
 
+# --- Main Confirmation ---
+echo "This script will automatically:"
+echo " 1. Install Ollama (if missing)"
+echo " 2. Configure Security Layers (OLLAMA_ORIGINS)"
+echo " 3. Download the AI Brain (llama3.2:1b)"
+echo ""
+printf "❓ Do you want to proceed with autonomous setup? (y/n): "
+read main_choice < /dev/tty
+
+if [[ ! "$main_choice" =~ ^[Yy]$ ]]; then
+    echo "❌ Setup cancelled by user."
+    exit 0
+fi
+
+echo "🚀 Starting autonomous setup..."
+echo ""
+
 # --- Ollama Check & Install ---
 if ! command -v ollama &> /dev/null; then
     echo "⚠️  Ollama is not detected on your system."
-    read -p "❓ Would you like to install Ollama automatically? (y/n): " install_choice
-    if [[ "$install_choice" =~ ^[Yy]$ ]]; then
-        echo "📥 Starting Ollama installation..."
-        OS_TYPE="$(uname -s)"
-        if [[ "$OS_TYPE" == "Linux" ]]; then
-            curl -fsSL https://ollama.com/install.sh | sh
-        elif [[ "$OS_TYPE" == "Darwin" ]]; then
-            if command -v brew &> /dev/null; then
-                echo "🍺 Using Homebrew to install Ollama..."
-                brew install --cask ollama
-            else
-                echo "❌ Homebrew is not installed. Please install it first or download Ollama from https://ollama.com/download"
-                exit 1
-            fi
+    echo "📥 Starting autonomous Ollama installation..."
+    
+    OS_TYPE="$(uname -s)"
+    if [[ "$OS_TYPE" == "Linux" ]]; then
+        curl -fsSL https://ollama.com/install.sh | sh
+    elif [[ "$OS_TYPE" == "Darwin" ]]; then
+        if command -v brew &> /dev/null; then
+            echo "🍺 Using Homebrew to install Ollama..."
+            brew install --cask ollama
         else
-            echo "❌ Unsupported OS for automatic installation. Please visit https://ollama.com"
+            echo "❌ Homebrew is not installed. Please install it manually from https://ollama.com"
             exit 1
         fi
-        echo "✅ Ollama installation requested!"
-    else
-        echo "⏭️  Skipping Ollama installation. Note: ChatLoom requires Ollama to be installed."
     fi
+    
+    # After installation, try to add to path for current session if possible
+    if [[ "$OS_TYPE" == "Darwin" ]]; then
+        export PATH="/Applications/Ollama.app/Contents/Resources:$PATH"
+    fi
+    
+    echo "✅ Ollama installation requested!"
 else
     echo "✨ Ollama is already installed. Proceeding with configuration..."
 fi
@@ -79,8 +95,40 @@ fi
 echo 'export OLLAMA_HOST="0.0.0.0"' >> "$SHELL_CONFIG"
 echo "export OLLAMA_ORIGINS=\"$SECURE_ORIGINS\"" >> "$SHELL_CONFIG"
 
+# --- Ensure Ollama is running ---
+echo "🔄 Ensuring Ollama service is active..."
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    # On Mac, check if app is running, if not open it
+    if ! pgrep -x "Ollama" > /dev/null; then
+        echo "🚀 Starting Ollama application..."
+        open -a Ollama
+        echo "⏳ Waiting for Ollama to initialize (10s)..."
+        sleep 10
+    fi
+else
+    # On Linux, try to start systemd service if not active
+    if ! systemctl is-active --quiet ollama; then
+        echo "🚀 Starting Ollama service..."
+        sudo systemctl start ollama || true
+        sleep 5
+    fi
+fi
+
 echo ""
 echo "🧠  Checking for local AI Brain (llama3.2:1b)..."
+# Try a few times to connect to the API
+MAX_RETRIES=5
+RETRY_COUNT=0
+while ! curl -s http://localhost:11434/api/tags > /dev/null; do
+    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+        echo "❌ Could not connect to Ollama API. Please make sure Ollama is running and try again."
+        exit 1
+    fi
+    echo "⏳ Waiting for Ollama API to be ready... ($((RETRY_COUNT+1))/$MAX_RETRIES)"
+    sleep 5
+    RETRY_COUNT=$((RETRY_COUNT+1))
+done
+
 if ollama list | grep -q "llama3.2:1b"; then
     echo "✨  Model 'llama3.2:1b' is already available."
 else
