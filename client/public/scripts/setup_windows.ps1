@@ -66,9 +66,9 @@ if ($mainChoice -notmatch "[Yy]") {
 Write-Host "🚀 Starting secure configuration..." -ForegroundColor Cyan
 Write-Host ""
 
-# Define Secure Origins (Strictly whitelisted for ChatLoom)
-# '*' wildcard was safely removed to prevent malicious CORS requests from other websites
-$SECURE_ORIGINS = "https://chatloom.online,https://www.chatloom.online,https://*.chatloom.online,http://chatloom.online,http://www.chatloom.online,http://localhost"
+# Official Secured Domains & Safe Local Networks
+# We use controlled wildcards to allow local development (localhost, 192.168) while blocking public internet attacks.
+$SECURE_ORIGINS = "https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*,http://192.168.*.*:*"
 $OLLAMA_BIND = "0.0.0.0:11434"
 
     # Apply persistency for the user Registry
