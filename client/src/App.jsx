@@ -535,66 +535,83 @@ function App() {
     setIsDetecting(true);
     setStep("detect");
     setStatus("Looking for your brain node...");
-    setModels([]); // Absolute reset
+    setModels([]);
+
+    const isHttps = window.location.protocol === "https:";
 
     try {
-      // 1. First Attempt: Direct Browser Access (127.0.0.1 is often more reliable than localhost)
+      console.log(`DEBUG: Detection started. HTTPS: ${isHttps}`);
+
+      // 1. Direct Browser Access
       const targets = [
-        "http://localhost:11434/api/tags",
         "http://127.0.0.1:11434/api/tags",
+        "http://localhost:11434/api/tags",
       ];
+
       for (const target of targets) {
         try {
-          const localRes = await axios.get(target, { timeout: 1200 });
-          if (localRes.data.models && localRes.data.models.length > 0) {
-            // Filter only local models with a digest and no "cloud" in name
+          const localRes = await axios.get(target, { timeout: 1500 });
+          if (localRes.data.models) {
             const mod = localRes.data.models
-              .filter((m) => {
-                const nameLower = (m.name || "").toLowerCase();
-                return m.digest && !nameLower.includes("cloud");
-              })
+              .filter(
+                (m) =>
+                  m.digest && !(m.name || "").toLowerCase().includes("cloud"),
+              )
               .map((m) => ({
                 name: m.name,
                 parameter_size: m.details?.parameter_size || "unknown",
                 origin: "Local PC",
               }));
-            setModels(mod);
-            setStep("setup");
-            setIsDetecting(false);
-            return;
+
+            if (mod.length > 0) {
+              setModels(mod);
+              setStep("setup");
+              setIsDetecting(false);
+              return;
+            }
           }
         } catch (e) {
-          console.log(`Direct connection to ${target} failed.`);
+          console.warn(`Detection failed for ${target}:`, e.message);
         }
       }
 
-      // 2. Second Attempt: Server-Side Bridge
-      setStatus("Establishing network bridge...");
+      // 2. Server-Side Bridge fallback
+      setStatus("Direct link blocked. Trying Secure Bridge...");
       try {
         const res = await axios.get(`${BACKEND_URL}/api/detect-llm`);
-        if (
-          res.data.status === "success" &&
-          res.data.models &&
-          res.data.models.length > 0
-        ) {
-          const mod = res.data.models.map((m) => ({
-            ...m,
-            origin: res.data.origin || "Remote",
-          }));
-          setModels(mod);
-          setStep("setup");
-        } else {
-          setStatus(
-            res.data.message || "No local brains found on this machine.",
+        if (res.data.status === "success" && res.data.models?.length > 0) {
+          setModels(
+            res.data.models.map((m) => ({
+              ...m,
+              origin: res.data.origin || "Neural Link",
+            })),
           );
+          setStep("setup");
           setIsDetecting(false);
+          return;
         }
-      } catch (err) {
-        // Axios error might contain the response message
-        const msg = err.response?.data?.message || "PC Node Not Responsive.";
-        setStatus(msg);
-        setIsDetecting(false);
+      } catch (bridgeErr) {
+        console.error("Bridge link failed:", bridgeErr.message);
       }
+
+      // 3. Final Failure - Show Troubleshooting
+      let errorMsg = "No local brains found.";
+      if (isHttps) {
+        errorMsg =
+          "Your browser is blocking Local AI access due to HTTPS (Mixed Content). " +
+          "If you're using Brave/Chrome, try visiting http://localhost:11434 in a new tab, " +
+          "then refresh this page. You might also need to allow 'insecure content' or " +
+          "'private network access' in your browser settings.";
+      } else {
+        errorMsg =
+          "No local brains found. Is Ollama running? " +
+          "If you're running Ollama, ensure it's accessible on http://localhost:11434.";
+      }
+
+      setStatus(errorMsg);
+      setIsDetecting(false);
+
+      // Help UI: Trigger a specific state to show "How to fix"
     } catch (e) {
       console.error("Critical detection failure", e);
       setStatus("Neural link failure.");
