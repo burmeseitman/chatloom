@@ -66,21 +66,31 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
 }
 
 Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
+$logPath = "$env:TEMP\chatloom_tunnel.log"
+Remove-Item $logPath -ErrorAction SilentlyContinue
 
 Write-Host "⚡ Starting Neural Link..." -ForegroundColor Magenta
-Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardError "$env:TEMP\chatloom_tunnel.log"
+# On Windows, Start-Process captures stderr and stdout separately. Cloudflare URL is usually in stderr.
+Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardError $logPath
 
-# 4. Wait for Tunnel URL and Post to Backend
-Write-Host "⏳ Routing your AI node to the cloud..." -ForegroundColor Gray
+# 4. Wait for Tunnel URL and Post to Backend (Increased timeout and robustness)
+Write-Host "⏳ Routing your AI node to the cloud (may take up to 60s)..." -ForegroundColor Gray
 $TUNNEL_URL = $null
-for ($i=0; $i -lt 15; $i++) {
+for ($i=0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 2
-    if (Test-Path "$env:TEMP\chatloom_tunnel.log") {
-        $logContent = Get-Content "$env:TEMP\chatloom_tunnel.log" -Raw -ErrorAction SilentlyContinue
+    if (Test-Path $logPath) {
+        $logContent = Get-Content $logPath -Raw -ErrorAction SilentlyContinue
         if ($logContent -match '(https://[a-zA-Z0-9-]+\.trycloudflare\.com)') {
             $TUNNEL_URL = $matches[1]
             break
         }
+    }
+    # Check if process is still running
+    if (-not (Get-Process "cloudflared" -ErrorAction SilentlyContinue)) {
+        Write-Host "❌ Error: Cloudflare process died unexpectedly." -ForegroundColor Red
+        if (Test-Path $logPath) { Get-Content $logPath -Tail 5 }
+        Pause
+        Exit 1
     }
 }
 
@@ -95,7 +105,12 @@ if ($TUNNEL_URL) {
         } Catch {}
     }
 } else {
-    Write-Host "⚠️ Tunnel generation timed out. Please check your internet and try again." -ForegroundColor Red
+    Write-Host "❌ ERROR: Tunnel generation timed out." -ForegroundColor Red
+    if (Test-Path $logPath) {
+        Write-Host "🔍 Technical details from cloudflared:" -ForegroundColor Gray
+        Get-Content $logPath -Tail 5
+    }
+    Write-Host "👉 Suggestions: Check your internet connection or Firewall / VPN settings." -ForegroundColor Yellow
 }
 
 Write-Host "------------------------------------------" -ForegroundColor Yellow

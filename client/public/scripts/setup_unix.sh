@@ -33,11 +33,11 @@ fi
 echo "✅ Ollama detected."
 
 # 2. Configure Ollama for Browser Access (CORS)
-# We do this silently to improve the 'Vibe'
 SECURE_ORIGINS="https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*"
 OLLAMA_BIND="0.0.0.0:11434"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "🛡️  Applying security profiles..."
     launchctl setenv OLLAMA_HOST "$OLLAMA_BIND"
     launchctl setenv OLLAMA_ORIGINS "$SECURE_ORIGINS"
     # Restart Ollama to apply
@@ -73,31 +73,45 @@ fi
 
 # Kill old tunnels
 pkill -f "cloudflared tunnel --url" 2>/dev/null || true
+rm -f /tmp/chatloom_tunnel.log
 
 # Start new tunnel
 echo "⚡ Starting Neural Link..."
-$CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /tmp/chatloom_tunnel.log 2>&1 &
+# Cloudflare outputs the URL to stderr, so we redirect stderr to a file and stdout to dev null
+$CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
 
-# 4. Wait for Tunnel URL and Post to Backend
-echo "⏳ Routing your AI node to the cloud..."
+# 4. Wait for Tunnel URL and Post to Backend (Increased timeout to 60s)
+echo "⏳ Routing your AI node to the cloud (may take up to 60s)..."
 TUNNEL_URL=""
-for i in {1..15}; do
+for i in {1..30}; do
     sleep 2
-    TUNNEL_URL=$(grep -o 'https://.*[.]trycloudflare[.]com' /tmp/chatloom_tunnel.log | head -n 1)
-    if [ -n "$TUNNEL_URL" ]; then
-        echo "✅ Cloud Link Ready: $TUNNEL_URL"
-        if [ -n "$SESSION_ID" ]; then
-            curl -s -X POST -H "Content-Type: application/json" \
-                 -d "{\"session_id\":\"$SESSION_ID\", \"tunnel_url\":\"$TUNNEL_URL\"}" \
-                 "$API_URL/api/tunnel" > /dev/null
-            echo "🔗 Node linked to session: $SESSION_ID"
+    if [ -f /tmp/chatloom_tunnel.log ]; then
+        TUNNEL_URL=$(grep -o 'https://.*[.]trycloudflare[.]com' /tmp/chatloom_tunnel.log | head -n 1)
+        if [ -n "$TUNNEL_URL" ]; then
+            echo "✅ Cloud Link Ready: $TUNNEL_URL"
+            if [ -n "$SESSION_ID" ]; then
+                curl -s -X POST -H "Content-Type: application/json" \
+                     -d "{\"session_id\":\"$SESSION_ID\", \"tunnel_url\":\"$TUNNEL_URL\"}" \
+                     "$API_URL/api/tunnel" > /dev/null
+                echo "🔗 Node linked to session: $SESSION_ID"
+            fi
+            break
         fi
-        break
+    fi
+    # Quick check if process died
+    if ! pgrep -f "cloudflared tunnel --url" > /dev/null; then
+         echo "❌ Error: Cloudflare process died unexpectedly."
+         cat /tmp/chatloom_tunnel.log
+         exit 1
     fi
 done
 
 if [ -z "$TUNNEL_URL" ]; then
-    echo "⚠️  Tunnel generation timed out. Please check your internet and try again."
+    echo "❌ ERROR: Tunnel generation timed out."
+    echo "🔍 Technical details from cloudflared:"
+    cat /tmp/chatloom_tunnel.log | tail -n 5
+    echo "---"
+    echo "👉 Suggestions: Check your internet connection or Firewall / VPN settings."
     exit 1
 fi
 
