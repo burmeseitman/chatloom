@@ -41,6 +41,37 @@ def get_tunnel(session_id):
         return jsonify({"tunnel_url": url})
     return jsonify({"error": "Not found"}), 404
 
+@app.route('/api/setup/<platform>/<session_id>', methods=['GET'])
+def serve_setup_script(platform, session_id):
+    if platform not in ["unix", "windows"]:
+        return "Invalid platform", 400
+        
+    script_name = "setup_unix.sh" if platform == "unix" else "setup_windows.ps1"
+    script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client', 'public', 'scripts', script_name)
+    
+    if not os.path.exists(script_path):
+        return f"Script not found at {script_path}", 404
+        
+    try:
+        with open(script_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            
+        # Try to resolve origin accurately whether requested directly or proxied
+        api_origin = request.headers.get("X-Forwarded-Host", request.host_url).rstrip("/")
+        if "http" not in api_origin:
+            api_origin = ("https://" if request.is_secure else "http://") + api_origin
+            
+        if platform == "unix":
+            injection = f'\nexport CHATLOOM_SESSION="{session_id}"\nexport CHATLOOM_API="{api_origin}"\n'
+            content = content.replace('#!/bin/bash', '#!/bin/bash' + injection)
+        else:
+            injection = f'$env:CHATLOOM_SESSION="{session_id}"\n$env:CHATLOOM_API="{api_origin}"\n'
+            content = injection + content
+            
+        return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
