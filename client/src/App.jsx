@@ -214,6 +214,44 @@ function App() {
     return id;
   });
 
+  const [tunnelUrl, setTunnelUrl] = useState(
+    () => localStorage.getItem("chat_tunnel_url") || null,
+  );
+
+  useEffect(() => {
+    if (tunnelUrl) {
+      localStorage.setItem("chat_tunnel_url", tunnelUrl);
+    } else {
+      localStorage.removeItem("chat_tunnel_url");
+    }
+  }, [tunnelUrl]);
+
+  // Cloudflare Tunnel Polling & Detection Connection
+  useEffect(() => {
+    if (step !== "setup" && step !== "detect") return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/tunnel/${sessionId}`);
+        if (res.data.tunnel_url && res.data.tunnel_url !== tunnelUrl) {
+          console.log(
+            `DEBUG: Found tunnel via background sync: ${res.data.tunnel_url}`,
+          );
+          setTunnelUrl(res.data.tunnel_url);
+          // Only trigger a re-detection automatically if we are hovering on setup/detect waiting for it
+          if (step === "setup" || step === "detect") {
+            handleTopicClick(
+              selectedTopic || localStorage.getItem("chat_room"),
+              res.data.tunnel_url,
+            );
+          }
+        }
+      } catch (e) {
+        // No tunnel found or polling error
+      }
+    }, 4000); // Check every 4s
+    return () => clearInterval(interval);
+  }, [step, sessionId, tunnelUrl, selectedTopic]);
+
   const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
   const [nicknameError, setNicknameError] = useState("");
@@ -529,7 +567,7 @@ function App() {
     }
   };
 
-  const handleTopicClick = async (topicName) => {
+  const handleTopicClick = async (topicName, customTunnel = null) => {
     setSelectedTopic(topicName);
     localStorage.setItem("chat_room", topicName);
     setIsDetecting(true);
@@ -548,12 +586,20 @@ function App() {
         "http://localhost:11434/api/tags",
       ];
 
+      const activeTunnel = customTunnel || tunnelUrl;
+      if (activeTunnel) {
+        targets.unshift(`${activeTunnel}/api/tags`);
+      }
+
       let lastLocalError = null;
 
       for (const target of targets) {
         try {
           const localRes = await axios.get(target, { timeout: 5000 });
           if (localRes.data.models) {
+            const originLabel = target.includes(".trycloudflare.com")
+              ? "Cloudflare Tunnel"
+              : "Local PC";
             const mod = localRes.data.models
               .filter(
                 (m) =>
@@ -562,7 +608,7 @@ function App() {
               .map((m) => ({
                 name: m.name,
                 parameter_size: m.details?.parameter_size || "unknown",
-                origin: "Local PC",
+                origin: originLabel,
               }));
 
             if (mod.length > 0) {
@@ -766,33 +812,49 @@ function App() {
           keep_alive: hardwareRef.current === "low" ? 0 : "5m",
         };
 
-        // Attempt 1: Shared Browser Access (Localhost)
-        try {
-          res = await axios.post(
-            "http://localhost:11434/api/generate",
-            generateData,
-            { timeout: profile.timeout },
-          );
-        } catch (localErr) {
-          console.warn("Localhost failed, trying 127.0.0.1...", localErr);
-          // Attempt 2: IP Fallback
+        // Attempt 0: Try Cloudflare Tunnel if available
+        const currentTunnelUrl = localStorage.getItem("chat_tunnel_url");
+        if (currentTunnelUrl) {
           try {
             res = await axios.post(
-              "http://127.0.0.1:11434/api/generate",
+              `${currentTunnelUrl}/api/generate`,
               generateData,
               { timeout: profile.timeout },
             );
-          } catch (ipErr) {
-            console.warn(
-              "Direct access blocked. Using Backend Bridge...",
-              ipErr,
-            );
-            // Attempt 3: Production Bridge (Bypass Mixed Content)
+          } catch (e) {
+            console.warn("Tunnel generate failed", e);
+          }
+        }
+
+        if (!res) {
+          // Attempt 1: Shared Browser Access (Localhost)
+          try {
             res = await axios.post(
-              `${BACKEND_URL}/api/generate-bridge`,
+              "http://localhost:11434/api/generate",
               generateData,
-              { timeout: profile.timeout + 5000 }, // Extra buffer for server relay
+              { timeout: profile.timeout },
             );
+          } catch (localErr) {
+            console.warn("Localhost failed, trying 127.0.0.1...", localErr);
+            // Attempt 2: IP Fallback
+            try {
+              res = await axios.post(
+                "http://127.0.0.1:11434/api/generate",
+                generateData,
+                { timeout: profile.timeout },
+              );
+            } catch (ipErr) {
+              console.warn(
+                "Direct access blocked. Using Backend Bridge...",
+                ipErr,
+              );
+              // Attempt 3: Production Bridge (Bypass Mixed Content)
+              res = await axios.post(
+                `${BACKEND_URL}/api/generate-bridge`,
+                generateData,
+                { timeout: profile.timeout + 5000 },
+              );
+            }
           }
         }
 
@@ -826,6 +888,13 @@ function App() {
       processQueue();
     });
 
+    socket.on("kill_tunnel", () => {
+      console.log("Server requested tunnel shutdown. LocalStorage cleared.");
+      // Note: The browser cannot natively kill the OS 'cloudflared' process
+      // due to security sandboxes. The tunnel remains open on the OS level pending a PC reboot or manual kill.
+      setTunnelUrl(null);
+    });
+
     return () => {
       socket.off("connect");
       socket.off("disconnect");
@@ -835,6 +904,7 @@ function App() {
       socket.off("update_participants");
       socket.off("llm_action");
       socket.off("request_generation");
+      socket.off("kill_tunnel");
     };
   }, [sessionId]);
 
@@ -1242,13 +1312,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`irm ${window.location.origin}/scripts/setup_windows.ps1 | iex`}
+                      {`$env:CHATLOOM_SESSION="${sessionId}"; $env:CHATLOOM_API="${window.location.origin}"; irm ${window.location.origin}/scripts/setup_windows.ps1 | iex`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `irm ${origin}/scripts/setup_windows.ps1 | iex`,
+                          `$env:CHATLOOM_SESSION="${sessionId}"; $env:CHATLOOM_API="${origin}"; irm ${origin}/scripts/setup_windows.ps1 | iex`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
@@ -1267,13 +1337,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`}
+                      {`export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${window.location.origin}"; curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `curl -sSL ${origin}/scripts/setup_unix.sh | bash`,
+                          `export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${origin}"; curl -sSL ${origin}/scripts/setup_unix.sh | bash`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
@@ -1410,6 +1480,21 @@ function App() {
                   </div>
                 )}
               </div>
+
+              {tunnelUrl && (
+                <div className="mb-6 p-4 rounded-xl border border-blue-500/20 bg-blue-500/5">
+                  <label className="block text-[10px] font-bold text-blue-400 mb-2 uppercase tracking-widest flex items-center gap-2">
+                    <Cloud size={14} /> Cloudflare Secure Tunnel
+                  </label>
+                  <code className="text-[11px] font-mono text-gray-300 pointer-events-none select-all break-all">
+                    {tunnelUrl}
+                  </code>
+                  <p className="text-[10px] text-gray-500 mt-2 italic">
+                    Your AI node is securely exposed to the neural network via
+                    this unique, private URL.
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-bold text-gray-400 mb-2 uppercase tracking-widest">

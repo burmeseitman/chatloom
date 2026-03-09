@@ -22,6 +22,25 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
 
+active_tunnels = {}
+
+@app.route('/api/tunnel', methods=['POST'])
+def register_tunnel():
+    data = request.json
+    session_id = data.get('session_id')
+    tunnel_url = data.get('tunnel_url')
+    if session_id and tunnel_url:
+        active_tunnels[session_id] = tunnel_url
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error"}), 400
+
+@app.route('/api/tunnel/<session_id>', methods=['GET'])
+def get_tunnel(session_id):
+    url = active_tunnels.get(session_id)
+    if url:
+        return jsonify({"tunnel_url": url})
+    return jsonify({"error": "Not found"}), 404
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -588,6 +607,13 @@ def handle_leave(data=None):
             socketio.emit('system_message', sys_msg, room=rid)
             add_to_history(rid, 'system', sys_msg)
             broadcast_llm_list(rid)
+            
+            # Autonomously request the client to kill its local tunnel for security (Kill Switch)
+            session_id = llm_info.get('session_id')
+            if session_id and session_id in active_tunnels:
+                # Tell the specific client browser to execute the kill switch
+                socketio.emit('kill_tunnel', {}, to=request.sid)
+                del active_tunnels[session_id]
 
 @socketio.on('disconnect')
 def handle_disconnect():

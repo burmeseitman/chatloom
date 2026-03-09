@@ -140,6 +140,40 @@ while ! curl -s -f http://localhost:11434/api/tags > /dev/null; do
     RETRY_COUNT=$((RETRY_COUNT+1))
 done
 
+# --- Cloudflare Secure Tunnel Setup ---
+if [ -n "$CHATLOOM_SESSION" ]; then
+    echo "☁️ Setting up Dynamic Cloudflare Tunnel..."
+    CLOUDFLARED_BIN=""
+    if command -v cloudflared &> /dev/null; then
+        CLOUDFLARED_BIN="cloudflared"
+    else
+        echo "⬇️ Downloading Cloudflare dependencies..."
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64 -o /tmp/cloudflared
+        else
+            curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
+        fi
+        chmod +x /tmp/cloudflared
+        CLOUDFLARED_BIN="/tmp/cloudflared"
+    fi
+
+    echo "⚡ Initiating Neural Link..."
+    pkill -f "cloudflared tunnel --url" 2>/dev/null || true
+    $CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /tmp/chatloom_tunnel.log 2>&1 &
+    
+    echo "⏳ Routing secure endpoints. Please wait..."
+    for i in {1..15}; do
+        sleep 2
+        TUNNEL_URL=$(grep -o 'https://.*[.]trycloudflare[.]com' /tmp/chatloom_tunnel.log | head -n 1)
+        if [ -n "$TUNNEL_URL" ]; then
+            echo "✅ Dynamic Tunnel established: $TUNNEL_URL"
+            API_URL="${CHATLOOM_API:-https://chatloom.online}"
+            curl -s -X POST -H "Content-Type: application/json" -d "{\"session_id\":\"$CHATLOOM_SESSION\", \"tunnel_url\":\"$TUNNEL_URL\"}" "$API_URL/api/tunnel" > /dev/null
+            break
+        fi
+    done
+fi
+
 echo "✅ Configuration successful!"
 echo ""
 echo "------------------------------------------"

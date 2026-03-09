@@ -124,6 +124,51 @@ $OLLAMA_BIND = "0.0.0.0:11434"
             }
         }
 
+        # --- Cloudflare Secure Tunnel Setup ---
+        if ($env:CHATLOOM_SESSION) {
+            Write-Host "☁️ Setting up Dynamic Cloudflare Tunnel..." -ForegroundColor Cyan
+            $CLOUDFLARED_BIN = "cloudflared"
+            if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
+                Write-Host "⬇️ Downloading Cloudflare dependencies..." -ForegroundColor Gray
+                $CLOUDFLARED_BIN = "$env:TEMP\cloudflared.exe"
+                [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile $CLOUDFLARED_BIN
+            }
+
+            Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
+
+            Write-Host "⚡ Initiating Neural Link..." -ForegroundColor Magenta
+            Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardOutput "$env:TEMP\chatloom_tunnel.log" -RedirectStandardError "$env:TEMP\chatloom_tunnel_err.log"
+
+            Write-Host "⏳ Routing secure endpoints. Please wait..." -ForegroundColor Gray
+            $TUNNEL_URL = $null
+            for ($i=0; $i -lt 15; $i++) {
+                Start-Sleep -Seconds 2
+                if (Test-Path "$env:TEMP\chatloom_tunnel_err.log") {
+                    $logContent = Get-Content "$env:TEMP\chatloom_tunnel_err.log" -Raw -ErrorAction SilentlyContinue
+                    if ($logContent -match '(https://[a-zA-Z0-9-]+\.trycloudflare\.com)') {
+                        $TUNNEL_URL = $matches[1]
+                        break
+                    }
+                }
+            }
+
+            if ($TUNNEL_URL) {
+                Write-Host "✅ Dynamic Tunnel established: $TUNNEL_URL" -ForegroundColor Green
+                $API_URL = if ($env:CHATLOOM_API) { $env:CHATLOOM_API } else { "https://chatloom.online" }
+                $body = @{
+                    session_id = $env:CHATLOOM_SESSION
+                    tunnel_url = $TUNNEL_URL
+                } | ConvertTo-Json
+                Try {
+                    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+                    Invoke-RestMethod -Uri "$API_URL/api/tunnel" -Method Post -Body $body -ContentType "application/json" -ErrorAction SilentlyContinue | Out-Null
+                } Catch {}
+            } else {
+                Write-Host "⚠️ Cloudflare tunnel routing took too long. It may still be starting..." -ForegroundColor Yellow
+            }
+        }
+
         Write-Host ""
         Write-Host " ✅ Configuration successful!" -ForegroundColor Green
         Write-Host "------------------------------------------" -ForegroundColor Yellow
