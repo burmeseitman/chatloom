@@ -9,6 +9,26 @@ Write-Host " 🐉 Initializing ChatLoom Secure Bridge..." -ForegroundColor Cyan
 Write-Host "------------------------------------------" -ForegroundColor Cyan
 Write-Host ""
 
+# --- Dynamic Interaction (New Professional Flow) ---
+if (-not $env:CHATLOOM_SESSION) {
+    Write-Host "🔑 ChatLoom Setup ID required." -ForegroundColor Yellow
+    Write-Host "   (You can find this on the 'Configure Agent' page)" -ForegroundColor Gray
+    $env:CHATLOOM_SESSION = Read-Host "👉 Enter Setup ID"
+}
+
+if (-not $env:CHATLOOM_SESSION) {
+    Write-Error "❌ Error: Session ID is required to link your node."
+    Exit 1
+}
+
+# Set default API if not provided (overridable via env)
+if (-not $env:CHATLOOM_API) {
+    $env:CHATLOOM_API = "https://chatloom.online"
+}
+
+Write-Host "🌐 Connecting to: $($env:CHATLOOM_API)" -ForegroundColor Magenta
+Write-Host ""
+
 # --- Pre-scan for Ollama ---
 # Fix common folder access issues (Silent Fix)
 $ollamaDataPath = Join-Path $env:USERPROFILE ".ollama"

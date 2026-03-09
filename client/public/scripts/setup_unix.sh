@@ -10,6 +10,23 @@ echo " 🐉 Initializing ChatLoom Secure Bridge..."
 echo "------------------------------------------"
 echo ""
 
+# --- Dynamic Interaction (New Professional Flow) ---
+if [ -z "$CHATLOOM_SESSION" ]; then
+    echo "🔑 ChatLoom Setup ID required."
+    echo "   (You can find this on the 'Configure Agent' page)"
+    read -p "👉 Enter Setup ID: " CHATLOOM_SESSION
+fi
+
+if [ -z "$CHATLOOM_SESSION" ]; then
+    echo "❌ Error: Session ID is required to link your node."
+    exit 1
+fi
+
+# Set default API if not provided (overridable via env)
+CHATLOOM_API="${CHATLOOM_API:-https://chatloom.online}"
+echo "🌐 Connecting to: $CHATLOOM_API"
+echo ""
+
 # --- Pre-scan for Ollama ---
 # Fix common permission issues if .ollama exists (Silent Fix)
 if [ -d "$HOME/.ollama" ]; then
