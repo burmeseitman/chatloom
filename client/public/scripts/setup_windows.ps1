@@ -6,9 +6,6 @@
 $SESSION_ID = $args[0]
 $API_URL = if ($args[1]) { $args[1] } else { "https://chatloom.online" }
 
-# Extract domain from API_URL for CORS
-$domain = if ($API_URL -match '://([^/:]+)') { $matches[1] } else { "chatloom.online" }
-
 Write-Host "------------------------------------------" -ForegroundColor Cyan
 Write-Host " 🐉 Initializing ChatLoom Cloud Bridge..." -ForegroundColor Cyan
 
@@ -31,38 +28,44 @@ if (-not $OLLAMA_FOUND) {
 Write-Host "✅ Ollama detected." -ForegroundColor Green
 
 # 2. Configure Ollama for Browser Access (CORS)
-# We add dynamic domain and tunnel wildcard to allow requests from anywhere
-$SECURE_ORIGINS = "https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*,https://*.trycloudflare.com,http://*.trycloudflare.com,https://$domain,http://$domain"
+# Use wildcard origins for maximum production compatibility and to bypass CORS blocks
+$SECURE_ORIGINS = "*"
 $OLLAMA_BIND = "0.0.0.0:11434"
 
 Try {
+    Write-Host "🛡️  Injecting Security Policies (Windows)..." -ForegroundColor Gray
+    
+    # Set Persistent Environment Variables (System/User Level)
     [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "$OLLAMA_BIND", "User")
     [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "$SECURE_ORIGINS", "User")
     
+    # Set for current process session as well
     $env:OLLAMA_HOST = "$OLLAMA_BIND"
     $env:OLLAMA_ORIGINS = "$SECURE_ORIGINS"
 
     $ollamaProcess = Get-Process ollama -ErrorAction SilentlyContinue
     if ($ollamaProcess) {
-        Write-Host "♻️ Restarting Ollama..." -ForegroundColor Yellow
+        Write-Host "♻️ Restarting Ollama with forced environment..." -ForegroundColor Yellow
         Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue
         Start-Sleep -Seconds 3
     }
 
+    # Locate the true executable to launch with inherited environment
     $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
     if (!$ollamaExe) { $ollamaExe = "$env:LOCALAPPDATA\Ollama\ollama.exe" }
     
     if (Test-Path $ollamaExe) {
-        Start-Process $ollamaExe
+        # Launching with Hidden window and inherited env vars
+        Start-Process $ollamaExe -WindowStyle Hidden
     } else {
         Start-Process "ollama" "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
     }
 } Catch {
-    Write-Host "⚠️ Security configuration failed. Try running as Administrator." -ForegroundColor Yellow
+    Write-Host "⚠️ Security configuration failed. Try running as Administrator if permissions error persists." -ForegroundColor Yellow
 }
 
 # 3. Setup Cloudflare Tunnel
-Write-Host "☁️ Setting up Cloudflare Tunnel..." -ForegroundColor Cyan
+Write-Host "☁️ Configuring Cloudflare Secure Tunnel..." -ForegroundColor Cyan
 $CLOUDFLARED_BIN = "cloudflared"
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
     $arch = $env:PROCESSOR_ARCHITECTURE
@@ -82,6 +85,7 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
     Invoke-WebRequest -Uri $url -OutFile $CLOUDFLARED_BIN
 }
 
+# Clear any old tunnel processes
 Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
 $logPath = "$env:TEMP\chatloom_tunnel.log"
 Remove-Item $logPath -ErrorAction SilentlyContinue
@@ -90,7 +94,7 @@ Write-Host "⚡ Starting Neural Link..." -ForegroundColor Magenta
 Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardError $logPath
 
 # 4. Wait for Tunnel URL
-Write-Host "⏳ Routing your AI node to the cloud (may take up to 60s)..." -ForegroundColor Gray
+Write-Host "⏳ Routing your AI node to the cloud (max 60s)..." -ForegroundColor Gray
 $TUNNEL_URL = $null
 for ($i=0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 2
@@ -104,13 +108,15 @@ for ($i=0; $i -lt 30; $i++) {
 }
 
 if ($TUNNEL_URL) {
-    Write-Host "✅ Cloud Link Ready: $TUNNEL_URL" -ForegroundColor Green
+    Write-Host "✅ Cloud Node Ready: $TUNNEL_URL" -ForegroundColor Green
     if ($SESSION_ID) {
-        $body = @{ session_id = $SESSION_ID; tunnel_url = $TUNNEL_URL } | ConvertTo-Json
+        # Ensure trailing slash is removed
+        $cleanTunnel = $TUNNEL_URL.TrimEnd('/')
+        $body = @{ session_id = $SESSION_ID; tunnel_url = $cleanTunnel } | ConvertTo-Json
         Try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
             Invoke-RestMethod -Uri "$API_URL/api/tunnel" -Method Post -Body $body -ContentType "application/json" -ErrorAction SilentlyContinue | Out-Null
-            Write-Host "🔗 Node linked to session: $SESSION_ID" -ForegroundColor Green
+            Write-Host "🔗 Session Linked: $SESSION_ID" -ForegroundColor Green
         } Catch {}
     }
 } else {
@@ -118,7 +124,8 @@ if ($TUNNEL_URL) {
 }
 
 Write-Host "------------------------------------------" -ForegroundColor Yellow
-Write-Host " 🎉 SETUP COMPLETE!" -ForegroundColor Yellow
-Write-Host " 🚀 Return to ChatLoom and start chatting." -ForegroundColor White
+Write-Host " 🎉 CLOUD BRIDGE ESTABLISHED!" -ForegroundColor Yellow
+Write-Host " 1. Return to ChatLoom." -ForegroundColor White
+Write-Host " 2. Perform a Hard Refresh (Shift + F5)." -ForegroundColor White
 Write-Host "------------------------------------------" -ForegroundColor Yellow
 Start-Sleep -Seconds 3

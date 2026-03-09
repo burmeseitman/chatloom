@@ -591,22 +591,30 @@ function App() {
         targets.unshift(`${activeTunnel}/api/tags`);
       }
 
+      console.log(`DEBUG: Scanning targets:`, targets);
       let lastLocalError = null;
 
       for (const target of targets) {
         try {
-          const localRes = await axios.get(target, { timeout: 5000 });
-          if (localRes.data.models) {
+          console.log(`DEBUG: Attempting detection at ${target}...`);
+          const localRes = await axios.get(target, { timeout: 8000 });
+
+          if (localRes.data && localRes.data.models) {
+            console.log(
+              `DEBUG: Found ${localRes.data.models.length} models at ${target}`,
+            );
             const originLabel = target.includes(".trycloudflare.com")
               ? "Cloudflare Tunnel"
               : "Local PC";
+
             const mod = localRes.data.models
               .filter(
                 (m) =>
-                  m.digest && !(m.name || "").toLowerCase().includes("cloud"),
+                  (m.name || m.model) &&
+                  !(m.name || "").toLowerCase().includes("cloud"),
               )
               .map((m) => ({
-                name: m.name,
+                name: m.name || m.model,
                 parameter_size: m.details?.parameter_size || "unknown",
                 origin: originLabel,
               }));
@@ -616,13 +624,24 @@ function App() {
               setStep("setup");
               setIsDetecting(false);
               return;
+            } else {
+              console.warn(
+                `DEBUG: No suitable models found at ${target}. Found:`,
+                localRes.data.models,
+              );
             }
+          } else {
+            console.warn(
+              `DEBUG: Invalid response format from ${target}:`,
+              localRes.data,
+            );
           }
         } catch (e) {
           lastLocalError = e;
           console.warn(
             `Detection failed for ${target}:`,
             e.message,
+            e.code,
             e.response?.status,
           );
         }
@@ -667,7 +686,7 @@ function App() {
             "Connection Timed Out. Your Local AI node is taking too long to wake up. Refresh to try again.";
         } else {
           errorMsg = isHttps
-            ? "Browser blocked access. Please visit http://localhost:11434 separately."
+            ? "Mixed Content Blocked. Please visit http://localhost:11434 separately to grant browser permission, then retry."
             : "No local brains found. Is Ollama running?";
         }
       }
