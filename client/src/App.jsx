@@ -608,6 +608,15 @@ function App() {
               ? "Cloudflare Tunnel"
               : "Local PC";
 
+            if (localRes.data.models.length === 0) {
+              console.warn(
+                "DEBUG: Ollama found but no local models pulled yet.",
+              );
+              setStatus(
+                "Ollama detected! But your model list is empty. Run 'ollama pull llama3' in terminal.",
+              );
+            }
+
             const mod = localRes.data.models
               .filter(
                 (m) =>

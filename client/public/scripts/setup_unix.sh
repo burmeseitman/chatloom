@@ -31,19 +31,14 @@ fi
 echo "✅ Ollama detected."
 
 # 2. Configure Environment (CORS & Host)
-# These variables ARE required for the browser to communicate with Ollama.
 export OLLAMA_HOST="0.0.0.0:11434"
 export OLLAMA_ORIGINS="*"
 
 echo "🛡️  Injecting Security Policies..."
 if [[ "$UNAME_S" == "Darwin" ]]; then
-    # Persistent for macOS GUI (Standard method)
     launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
     launchctl setenv OLLAMA_ORIGINS "*"
-    
-    # Save to profile for terminal persistence
     [[ "$SHELL" == */zsh ]] && CONFIG="$HOME/.zshrc" || CONFIG="$HOME/.bashrc"
-    touch "$CONFIG"
     sed -i '' '/OLLAMA_ORIGINS/d' "$CONFIG" 2>/dev/null
     sed -i '' '/OLLAMA_HOST/d' "$CONFIG" 2>/dev/null
     echo "export OLLAMA_HOST=\"0.0.0.0:11434\"" >> "$CONFIG"
@@ -52,17 +47,24 @@ fi
 
 # 3. Restart Ollama with forced environment
 echo "♻️  Resetting Ollama Engine..."
-# Kill both GUI and CLI processes
 pkill -9 "Ollama" 2>/dev/null || true
 pkill -9 "ollama" 2>/dev/null || true
 sleep 3
-
-# Launch the engine directly in background to inherit the exported variables.
-# This bypasses all GUI-level permission/caching issues.
 nohup $OLLAMA_CMD serve >/tmp/ollama_engine.log 2>&1 &
 echo "🚀 Ollama Engine started with Secure Access."
 
-# 4. Setup Cloudflare Tunnel
+# 4. Check for Models
+echo "🔎 Checking for local AI models..."
+sleep 2
+MODELS=$($OLLAMA_CMD list | grep -v "NAME")
+if [ -z "$MODELS" ]; then
+    echo "⚠️  No models found! Pulling 'llama3' (this may take a few mins)..."
+    $OLLAMA_CMD pull llama3
+else
+    echo "✅ Models found: $(echo "$MODELS" | awk '{print $1}' | tr '\n' ' ')"
+fi
+
+# 5. Setup Cloudflare Tunnel
 echo "☁️  Launching Secure Cloud Tunnel..."
 CLOUDFLARED_BIN="cloudflared"
 if ! command -v cloudflared &> /dev/null; then
@@ -81,11 +83,9 @@ fi
 
 pkill -f "cloudflared tunnel" 2>/dev/null || true
 rm -f /tmp/chatloom_tunnel.log
-
-# We tunnel to 127.0.0.1:11434 where the engine is now listening
 $CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
 
-# 5. Link to ChatLoom
+# 6. Link to ChatLoom
 echo "⏳ Routing your Node to the Cloud..."
 TUNNEL_URL=""
 for i in {1..30}; do

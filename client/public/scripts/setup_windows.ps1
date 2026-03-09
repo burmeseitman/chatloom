@@ -24,7 +24,6 @@ Write-Host "✅ Ollama detected." -ForegroundColor Green
 Write-Host "🛡️  Injecting Security Policies..." -ForegroundColor Gray
 [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", "User")
 [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "*", "User")
-
 $env:OLLAMA_HOST = "0.0.0.0:11434"
 $env:OLLAMA_ORIGINS = "*"
 
@@ -32,12 +31,21 @@ $env:OLLAMA_ORIGINS = "*"
 Write-Host "♻️  Resetting Ollama Engine..." -ForegroundColor Yellow
 Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 3
-
-# Launch engine directly to inherit process variables and bypass GUI caching
 Start-Process $ollamaExe -ArgumentList "serve" -WindowStyle Hidden
 Write-Host "🚀 Ollama Engine started with Secure Access." -ForegroundColor Green
 
-# 4. Setup Cloudflare Tunnel
+# 4. Check for Models
+Write-Host "🔎 Checking for local AI models..." -ForegroundColor Gray
+Start-Sleep -Seconds 2
+$models = & $ollamaExe list | Select-String -Pattern "NAME" -NotMatch
+if ([string]::IsNullOrWhiteSpace($models)) {
+    Write-Host "⚠️  No models found! Pulling 'llama3' (this may take a few mins)..." -ForegroundColor Yellow
+    & $ollamaExe pull llama3
+} else {
+    Write-Host "✅ Models found." -ForegroundColor Green
+}
+
+# 5. Setup Cloudflare Tunnel
 Write-Host "☁️  Launching Secure Cloud Tunnel..." -ForegroundColor Cyan
 $CLOUDFLARED_BIN = "cloudflared"
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
@@ -54,10 +62,9 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
 Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
 $logPath = "$env:TEMP\chatloom_tunnel.log"
 Remove-Item $logPath -ErrorAction SilentlyContinue
-
 Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardError $logPath
 
-# 5. Link to ChatLoom
+# 6. Link to ChatLoom
 Write-Host "⏳ Routing your Node to the Cloud..." -ForegroundColor Gray
 $TUNNEL_URL = $null
 for ($i=0; $i -lt 30; $i++) {

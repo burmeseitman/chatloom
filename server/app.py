@@ -39,7 +39,8 @@ def get_tunnel(session_id):
     url = active_tunnels.get(session_id)
     if url:
         return jsonify({"tunnel_url": url})
-    return jsonify({"error": "Not found"}), 404
+    # Return 200 instead of 404 to keep the console clean during setup polling
+    return jsonify({"tunnel_url": None}), 200
 
 @app.route('/api/setup/<platform>/<session_id>', methods=['GET'])
 def serve_setup_script(platform, session_id):
