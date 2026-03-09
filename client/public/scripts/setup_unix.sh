@@ -9,79 +9,61 @@ API_URL=${2:-https://chatloom.online}
 UNAME_S=$(uname -s)
 UNAME_M=$(uname -m)
 
-# Extract domain for CORS (redundant but safe)
-DOMAIN=$(echo $API_URL | awk -F[/:] '{print $4}')
-
 echo "------------------------------------------"
 echo " 🐉 Initializing ChatLoom Cloud Bridge..."
 echo "------------------------------------------"
 
 # 1. Locate Ollama
-OLLAMA_BIN=""
+OLLAMA_CMD=""
 if command -v ollama &> /dev/null; then
-    OLLAMA_BIN="ollama"
+    OLLAMA_CMD="ollama"
 elif [ -x "/Applications/Ollama.app/Contents/Resources/ollama" ]; then
-    OLLAMA_BIN="/Applications/Ollama.app/Contents/Resources/ollama"
+    OLLAMA_CMD="/Applications/Ollama.app/Contents/Resources/ollama"
 elif [ -x "/usr/local/bin/ollama" ]; then
-    OLLAMA_BIN="/usr/local/bin/ollama"
-elif [ -x "/opt/homebrew/bin/ollama" ]; then
-    OLLAMA_BIN="/opt/homebrew/bin/ollama"
+    OLLAMA_CMD="/usr/local/bin/ollama"
 fi
 
-if [ -z "$OLLAMA_BIN" ]; then
-    echo "⚠️  Ollama.app not found in standard locations."
-    echo "👉 Please install Ollama first: https://ollama.com"
+if [ -z "$OLLAMA_CMD" ]; then
+    echo "⚠️  Ollama not found. Please install it first: https://ollama.com"
     exit 1
 fi
 
 echo "✅ Ollama detected."
 
-# 2. Configure Security & Infrastructure
-# Use a wide wildcard for production robustness on local tunnels
-SECURE_ORIGINS="*" 
-OLLAMA_BIND="0.0.0.0:11434"
+# 2. Configure Environment (CORS & Host)
+# These variables ARE required for the browser to communicate with Ollama.
+export OLLAMA_HOST="0.0.0.0:11434"
+export OLLAMA_ORIGINS="*"
 
+echo "🛡️  Injecting Security Policies..."
 if [[ "$UNAME_S" == "Darwin" ]]; then
-    echo "🛡️  Injecting Security Policies (macOS)..."
+    # Persistent for macOS GUI (Standard method)
+    launchctl setenv OLLAMA_HOST "0.0.0.0:11434"
+    launchctl setenv OLLAMA_ORIGINS "*"
     
-    # Kill any existing Ollama processes
-    pkill -9 "Ollama" 2>/dev/null || true
-    sleep 2
-    
-    # The most bulletproof way for Ollama Mac to pick up env vars is direct binary launch
-    # instead of the "open" wrapper which often scrubs environment variables.
-    echo "♻️  Launching Ollama Engine with forced environment..."
-    
-    # We set these for the current session AND future sessions
-    launchctl setenv OLLAMA_HOST "$OLLAMA_BIND"
-    launchctl setenv OLLAMA_ORIGINS "$SECURE_ORIGINS"
-    
-    # Persist in shell for good measure
+    # Save to profile for terminal persistence
     [[ "$SHELL" == */zsh ]] && CONFIG="$HOME/.zshrc" || CONFIG="$HOME/.bashrc"
+    touch "$CONFIG"
     sed -i '' '/OLLAMA_ORIGINS/d' "$CONFIG" 2>/dev/null
     sed -i '' '/OLLAMA_HOST/d' "$CONFIG" 2>/dev/null
-    echo "export OLLAMA_HOST=\"$OLLAMA_BIND\"" >> "$CONFIG"
-    echo "export OLLAMA_ORIGINS=\"$SECURE_ORIGINS\"" >> "$CONFIG"
-
-    # Launching binary directly ensures the environment is inherited
-    if [ -x "/Applications/Ollama.app/Contents/MacOS/Ollama" ]; then
-        OLLAMA_HOST="$OLLAMA_BIND" OLLAMA_ORIGINS="$SECURE_ORIGINS" nohup "/Applications/Ollama.app/Contents/MacOS/Ollama" >/dev/null 2>&1 &
-    else
-        # Fallback to 'open' if manual path fails
-        OLLAMA_HOST="$OLLAMA_BIND" OLLAMA_ORIGINS="$SECURE_ORIGINS" open -a "Ollama"
-    fi
-else
-    # Linux Persistence
-    sudo mkdir -p /etc/systemd/system/ollama.service.d
-    echo "[Service]
-Environment=\"OLLAMA_HOST=$OLLAMA_BIND\"
-Environment=\"OLLAMA_ORIGINS=$SECURE_ORIGINS\"" | sudo tee /etc/systemd/system/ollama.service.d/override.conf > /dev/null
-    sudo systemctl daemon-reload
-    sudo systemctl restart ollama 2>/dev/null || true
+    echo "export OLLAMA_HOST=\"0.0.0.0:11434\"" >> "$CONFIG"
+    echo "export OLLAMA_ORIGINS=\"*\"" >> "$CONFIG"
 fi
 
-# 3. Setup Cloudflare Tunnel
-echo "☁️  Configuring Cloudflare Secure Tunnel..."
+# 3. Restart Ollama with forced environment
+echo "♻️  Resetting Ollama Engine..."
+# Kill both GUI and CLI processes
+pkill -9 "Ollama" 2>/dev/null || true
+pkill -9 "ollama" 2>/dev/null || true
+sleep 3
+
+# Launch the engine directly in background to inherit the exported variables.
+# This bypasses all GUI-level permission/caching issues.
+nohup $OLLAMA_CMD serve >/tmp/ollama_engine.log 2>&1 &
+echo "🚀 Ollama Engine started with Secure Access."
+
+# 4. Setup Cloudflare Tunnel
+echo "☁️  Launching Secure Cloud Tunnel..."
 CLOUDFLARED_BIN="cloudflared"
 if ! command -v cloudflared &> /dev/null; then
     BASE_URL="https://github.com/cloudflare/cloudflared/releases/latest/download"
@@ -97,37 +79,35 @@ if ! command -v cloudflared &> /dev/null; then
     fi
 fi
 
-# Clear old processes
 pkill -f "cloudflared tunnel" 2>/dev/null || true
 rm -f /tmp/chatloom_tunnel.log
 
-echo "⚡ Starting Neural Link..."
+# We tunnel to 127.0.0.1:11434 where the engine is now listening
 $CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
 
-# 4. Finalize Connection
-echo "⏳ Waiting for Cloud URL (max 60s)..."
+# 5. Link to ChatLoom
+echo "⏳ Routing your Node to the Cloud..."
 TUNNEL_URL=""
 for i in {1..30}; do
     sleep 2
     TUNNEL_URL=$(grep -o 'https://.*[.]trycloudflare[.]com' /tmp/chatloom_tunnel.log | head -n 1)
     if [ -n "$TUNNEL_URL" ]; then
-        echo "✅ Cloud Node Ready: $TUNNEL_URL"
+        echo "✅ Cloud Node Active: $TUNNEL_URL"
         if [ -n "$SESSION_ID" ]; then
             CLEAN_URL=$(echo "$TUNNEL_URL" | sed 's/\/$//')
             curl -s -X POST -H "Content-Type: application/json" -d "{\"session_id\":\"$SESSION_ID\", \"tunnel_url\":\"$CLEAN_URL\"}" "$API_URL/api/tunnel" >/dev/null
-            echo "🔗 Session Linked: $SESSION_ID"
+            echo "🔗 Neural Link Established."
         fi
         break
     fi
 done
 
 if [ -z "$TUNNEL_URL" ]; then
-    echo "❌ ERROR: Tunnel failed. Check internet/firewall."
+    echo "❌ ERROR: Cloud Routing Failed. Check Internet Connection."
     exit 1
 fi
 
 echo "------------------------------------------"
-echo " 🎉 CLOUD BRIDGE ESTABLISHED!"
-echo " 1. Return to ChatLoom."
-echo " 2. Perform a Hard Refresh (Shift + F5)."
+echo " 🎉 ALL DONE! NO MANUAL STEPS REMAINING."
+echo " 🚀 Your screen will automatically update."
 echo "------------------------------------------"

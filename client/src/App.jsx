@@ -237,18 +237,19 @@ function App() {
             `DEBUG: Found tunnel via background sync: ${res.data.tunnel_url}`,
           );
           setTunnelUrl(res.data.tunnel_url);
-          // Only trigger an auto re-detection if we are currently on detect or setup with error
-          if (step === "detect" || (step === "setup" && models.length === 0)) {
-            handleTopicClick(
-              selectedTopic || localStorage.getItem("chat_room"),
-              res.data.tunnel_url,
-            );
-          }
+          localStorage.setItem("chat_tunnel_url", res.data.tunnel_url);
+
+          // AUTO-FORWARD: If we find a tunnel, immediately try to discover models and advance the user
+          const targetTopic =
+            selectedTopic ||
+            localStorage.getItem("chat_room") ||
+            "General Chat";
+          handleTopicClick(targetTopic, res.data.tunnel_url);
         }
       } catch (e) {
         // No tunnel found or polling error
       }
-    }, 3000); // Check every 3s for faster setup
+    }, 2500); // Check slightly faster
     return () => clearInterval(interval);
   }, [step, sessionId, tunnelUrl, selectedTopic, models.length]);
 
