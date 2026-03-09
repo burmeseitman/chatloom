@@ -28,7 +28,8 @@ if (-not $OLLAMA_FOUND) {
 Write-Host "✅ Ollama detected." -ForegroundColor Green
 
 # 2. Configure Ollama for Browser Access (CORS)
-$SECURE_ORIGINS = "https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*"
+# We add *.trycloudflare.com to allow requests from the dynamic tunnel
+$SECURE_ORIGINS = "https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*,https://*.trycloudflare.com"
 $OLLAMA_BIND = "0.0.0.0:11434"
 
 Try {
@@ -61,7 +62,6 @@ Try {
 Write-Host "☁️ Setting up Cloudflare Tunnel..." -ForegroundColor Cyan
 $CLOUDFLARED_BIN = "cloudflared"
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
-    # Architecture detection for Windows
     $arch = $env:PROCESSOR_ARCHITECTURE
     Write-Host "⬇️ Downloading respective cloudflared binary ($arch)..." -ForegroundColor Gray
     

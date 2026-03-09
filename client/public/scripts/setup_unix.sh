@@ -48,7 +48,8 @@ fi
 echo "✅ Ollama detected."
 
 # 2. Configure Ollama for Browser Access (CORS)
-SECURE_ORIGINS="https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*"
+# We add *.trycloudflare.com to allow requests from the dynamic tunnel
+SECURE_ORIGINS="https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*,https://*.trycloudflare.com"
 OLLAMA_BIND="0.0.0.0:11434"
 
 if [[ "$UNAME_S" == "Darwin" ]]; then
@@ -81,7 +82,6 @@ if ! command -v cloudflared &> /dev/null; then
     
     BASE_URL="https://github.com/cloudflare/cloudflared/releases/latest/download"
     if [[ "$UNAME_S" == "Darwin" ]]; then
-        # On Darwin, cloudflared is distributed as a .tgz archive
         if [[ "$UNAME_M" == "arm64" ]]; then
             FILE_NAME="cloudflared-darwin-arm64.tgz"
         else
@@ -93,12 +93,10 @@ if ! command -v cloudflared &> /dev/null; then
             exit 1
         fi
         
-        # Extract the binary from tgz
         tar -xzf "/tmp/$FILE_NAME" -C /tmp/ 2>/dev/null
         chmod +x /tmp/cloudflared
         CLOUDFLARED_BIN="/tmp/cloudflared"
     else
-        # On Linux, cloudflared is distributed as a direct binary
         if [[ "$UNAME_M" == "aarch64" ]] || [[ "$UNAME_M" == "arm64" ]]; then
              URL="$BASE_URL/cloudflared-linux-arm64"
         elif [[ "$UNAME_M" == "arm"* ]]; then
