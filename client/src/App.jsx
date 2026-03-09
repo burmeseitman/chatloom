@@ -975,8 +975,8 @@ function App() {
 
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
-    const winCmd = `irm ${window.location.origin}/scripts/setup_windows.ps1 | iex`;
-    const unixCmd = `curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`;
+    const winCmd = `powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${window.location.origin}'; irm '${window.location.origin}/scripts/setup_windows.ps1' | iex"`;
+    const unixCmd = `export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${window.location.origin}"; curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`;
 
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
@@ -1302,18 +1302,16 @@ function App() {
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-6 border-b border-white/5">
                 <div>
                   <h3 className="text-purple-400 font-bold flex items-center gap-2 text-sm italic">
-                    <Zap size={18} /> Automated Node Setup
+                    <Zap size={18} /> Instant AI Activation
                   </h3>
                   <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-widest font-bold">
-                    Secure Local AI Bridge
+                    Zero Configuration Required
                   </p>
                 </div>
-                <div className="bg-purple-500/10 border border-purple-500/20 px-4 py-2 rounded-2xl flex flex-col items-center">
-                  <span className="text-[8px] font-black text-purple-400 uppercase tracking-widest mb-1">
-                    Your Setup ID
-                  </span>
-                  <span className="text-xl font-black font-mono text-white tracking-widest">
-                    {sessionId}
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-[10px] font-black text-green-400 uppercase tracking-widest">
+                    Awaiting Link
                   </span>
                 </div>
               </div>
@@ -1327,13 +1325,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`irm ${window.location.origin}/scripts/setup_windows.ps1 | iex`}
+                      {`powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${window.location.origin}'; irm '${window.location.origin}/scripts/setup_windows.ps1' | iex"`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `irm ${origin}/scripts/setup_windows.ps1 | iex`,
+                          `powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${origin}'; irm '${origin}/scripts/setup_windows.ps1' | iex"`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
@@ -1352,13 +1350,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`}
+                      {`export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${window.location.origin}"; curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `curl -sSL ${origin}/scripts/setup_unix.sh | bash`,
+                          `export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${origin}"; curl -sSL ${origin}/scripts/setup_unix.sh | bash`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
