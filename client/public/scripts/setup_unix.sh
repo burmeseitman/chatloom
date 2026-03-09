@@ -81,12 +81,24 @@ if ! command -v cloudflared &> /dev/null; then
     
     BASE_URL="https://github.com/cloudflare/cloudflared/releases/latest/download"
     if [[ "$UNAME_S" == "Darwin" ]]; then
+        # On Darwin, cloudflared is distributed as a .tgz archive
         if [[ "$UNAME_M" == "arm64" ]]; then
-            URL="$BASE_URL/cloudflared-darwin-arm64"
+            FILE_NAME="cloudflared-darwin-arm64.tgz"
         else
-            URL="$BASE_URL/cloudflared-darwin-amd64"
+            FILE_NAME="cloudflared-darwin-amd64.tgz"
         fi
+        
+        if ! curl -L -f "$BASE_URL/$FILE_NAME" -o "/tmp/$FILE_NAME"; then
+            echo "❌ ERROR: Failed to download Cloudflare archive from $BASE_URL/$FILE_NAME."
+            exit 1
+        fi
+        
+        # Extract the binary from tgz
+        tar -xzf "/tmp/$FILE_NAME" -C /tmp/ 2>/dev/null
+        chmod +x /tmp/cloudflared
+        CLOUDFLARED_BIN="/tmp/cloudflared"
     else
+        # On Linux, cloudflared is distributed as a direct binary
         if [[ "$UNAME_M" == "aarch64" ]] || [[ "$UNAME_M" == "arm64" ]]; then
              URL="$BASE_URL/cloudflared-linux-arm64"
         elif [[ "$UNAME_M" == "arm"* ]]; then
@@ -94,14 +106,14 @@ if ! command -v cloudflared &> /dev/null; then
         else
              URL="$BASE_URL/cloudflared-linux-amd64"
         fi
-    fi
 
-    if ! curl -L -f "$URL" -o /tmp/cloudflared; then
-        echo "❌ ERROR: Failed to download Cloudflare binary for $UNAME_S $UNAME_M."
-        exit 1
+        if ! curl -L -f "$URL" -o /tmp/cloudflared; then
+            echo "❌ ERROR: Failed to download Cloudflare binary."
+            exit 1
+        fi
+        chmod +x /tmp/cloudflared
+        CLOUDFLARED_BIN="/tmp/cloudflared"
     fi
-    chmod +x /tmp/cloudflared
-    CLOUDFLARED_BIN="/tmp/cloudflared"
 fi
 
 pkill -f "cloudflared tunnel --url" 2>/dev/null || true
