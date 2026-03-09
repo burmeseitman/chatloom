@@ -124,6 +124,7 @@ def get_setting(key, default=None):
 @app.route('/api/detect-llm', methods=['GET'])
 def detect_llm():
     """Detect models from the Main Server PC. Serves as a bridge when client cannot reach local Ollama."""
+    session_id = request.args.get('session_id')
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if client_ip and ',' in client_ip:
         client_ip = client_ip.split(',')[0].strip()
@@ -133,9 +134,27 @@ def detect_llm():
         client_ip = client_ip.replace('::ffff:', '')
         
     print(f"--- Detection Start ---")
-    print(f"Requester IP: {client_ip}")
+    print(f"Session: {session_id} | Client IP: {client_ip}")
 
-    # Case 1: Requester is the Main Server PC
+    # Case 0: Try the Tunnel associated with this session (STRONGLY RECOMMENDED FOR PROD)
+    if session_id and session_id in active_tunnels:
+        tunnel_url = active_tunnels[session_id].rstrip('/')
+        print(f"Action: Bridging through Tunnel {tunnel_url}")
+        try:
+            res = requests.get(f"{tunnel_url}/api/tags", timeout=15)
+            if res.status_code == 200:
+                models = res.json().get('models', [])
+                if models:
+                    suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not (m.get('name') or "").lower().startswith("cloud")]
+                    return jsonify({
+                        "status": "success",
+                        "models": suitable,
+                        "origin": "Neural Link (Bridged)"
+                    })
+        except Exception as e:
+            print(f"Tunnel bridge failed: {e}")
+
+    # Case 1: Requester is the Main Server PC (Local)
     if not client_ip or client_ip in ['127.0.0.1', 'localhost', '::1']:
         print("Action: Scanning Main PC (Local)")
         models = get_ollama_models()
@@ -145,12 +164,11 @@ def detect_llm():
             "origin": "Main PC"
         })
 
-    # Case 2: Requester is a Remote PC
-    print(f"Action: Scanning Client PC at {client_ip}")
+    # Case 2: Requester is a Remote PC (Direct Scan)
+    print(f"Action: Scanning Client IP at {client_ip}")
     remote_url = f"http://{client_ip}:11434"
     try:
-        # We use a slightly longer timeout for remote network detection
-        response = requests.get(f"{remote_url}/api/tags", timeout=5)
+        response = requests.get(f"{remote_url}/api/tags", timeout=10)
         if response.status_code == 200:
             models = response.json().get('models', [])
             suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models]
@@ -165,7 +183,7 @@ def detect_llm():
     
     return jsonify({
         "status": "error",
-        "message": f"Could not detect Ollama at {client_ip}. If you are on a remote machine, ensure Ollama is listening on the network.",
+        "message": "No local brain node detected. Ensure Ollama is running and Tunnel is active.",
         "models": [],
         "detected_ip": client_ip
     }), 404
@@ -178,14 +196,21 @@ def generate_bridge():
     prompt = data.get('prompt')
     system = data.get('system', '')
     options = data.get('options', {})
+    session_id = data.get('session_id')
 
     if not model or not prompt:
         return jsonify({"error": "Missing model or prompt"}), 400
 
+    # Prioritize specific tunnel for this session if it exists
+    target_url = OLLAMA_URL
+    if session_id and session_id in active_tunnels:
+        target_url = active_tunnels[session_id].rstrip('/')
+        print(f"Action: Bridging generation through tunnel {target_url}")
+
     try:
-        # We proxy the request to the local Ollama instance
+        # We proxy the request to the local Ollama instance (either localhost or tunnel)
         response = requests.post(
-            f"{OLLAMA_URL}/api/generate",
+            f"{target_url}/api/generate",
             json={
                 "model": model,
                 "prompt": prompt,

@@ -660,7 +660,9 @@ function App() {
       // 2. Server-Side Bridge fallback
       setStatus("Direct link blocked. Trying Secure Bridge...");
       try {
-        const res = await axios.get(`${BACKEND_URL}/api/detect-llm`);
+        const res = await axios.get(
+          `${BACKEND_URL}/api/detect-llm?session_id=${sessionId}`,
+        );
         if (res.data.status === "success" && res.data.models?.length > 0) {
           setModels(
             res.data.models.map((m) => ({
@@ -833,6 +835,7 @@ function App() {
           system,
           prompt,
           stream: false,
+          session_id: sessionId,
           options: {
             num_predict: profile.num_predict,
             num_ctx: profile.num_ctx,

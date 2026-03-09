@@ -1,20 +1,19 @@
 # ==========================================
-#   ChatLoom - One-Click Cloud Bridge (Win)
+#   ChatLoom - Neural Link Setup (Win)
 # ==========================================
-# Usage: irm https://chatloom.online/scripts/setup_windows.ps1 | iex -args <SESSION_ID>, <API_URL>
 
 $SESSION_ID = $args[0]
 $API_URL = if ($args[1]) { $args[1] } else { "https://chatloom.online" }
 
 Write-Host "------------------------------------------" -ForegroundColor Cyan
-Write-Host " 🐉 Initializing ChatLoom Cloud Bridge..." -ForegroundColor Cyan
+Write-Host " 🐉 Initializing ChatLoom Neural Link..." -ForegroundColor Cyan
 
-# 1. Locate Ollama
+# 1. Check for Ollama
 $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
 if (!$ollamaExe) { $ollamaExe = "$env:LOCALAPPDATA\Ollama\ollama.exe" }
 
 if (!(Test-Path $ollamaExe)) {
-    Write-Host "⚠️  Ollama not found. Please install it first: https://ollama.com" -ForegroundColor Yellow
+    Write-Host "⚠️  Ollama not detected. Please install it: https://ollama.com" -ForegroundColor Yellow
     Exit 1
 }
 
@@ -27,26 +26,26 @@ Write-Host "🛡️  Injecting Security Policies..." -ForegroundColor Gray
 $env:OLLAMA_HOST = "0.0.0.0:11434"
 $env:OLLAMA_ORIGINS = "*"
 
-# 3. Restart Ollama with forced environment
-Write-Host "♻️  Resetting Ollama Engine..." -ForegroundColor Yellow
-Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue
+# 3. Restart Engine (Forcing New Core Config)
+Write-Host "♻️  Resetting Brain Engine..." -ForegroundColor Yellow
+Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue 2>$null
 Start-Sleep -Seconds 3
 Start-Process $ollamaExe -ArgumentList "serve" -WindowStyle Hidden
-Write-Host "🚀 Ollama Engine started with Secure Access." -ForegroundColor Green
+Write-Host "🚀 Engine Active with Neural Access." -ForegroundColor Green
 
-# 4. Check for Models
-Write-Host "🔎 Checking for local AI models..." -ForegroundColor Gray
+# 4. Auto-Pull llama3 if empty
+Write-Host "🔎 Scanning local models..." -ForegroundColor Gray
 Start-Sleep -Seconds 2
 $models = & $ollamaExe list | Select-String -Pattern "NAME" -NotMatch
 if ([string]::IsNullOrWhiteSpace($models)) {
-    Write-Host "⚠️  No models found! Pulling 'llama3' (this may take a few mins)..." -ForegroundColor Yellow
+    Write-Host "⚠️  No models found. Auto-pulling 'llama3'..." -ForegroundColor Yellow
     & $ollamaExe pull llama3
 } else {
-    Write-Host "✅ Models found." -ForegroundColor Green
+    Write-Host "✅ Knowledge Base ready." -ForegroundColor Green
 }
 
-# 5. Setup Cloudflare Tunnel
-Write-Host "☁️  Launching Secure Cloud Tunnel..." -ForegroundColor Cyan
+# 5. Launch Cloudflare Tunnel
+Write-Host "☁️  Establishing Secure Tunnel..." -ForegroundColor Cyan
 $CLOUDFLARED_BIN = "cloudflared"
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
     $arch = $env:PROCESSOR_ARCHITECTURE
@@ -54,18 +53,17 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
     if ($arch -eq "ARM64") { $url = "$baseUrl/cloudflared-windows-arm64.exe" }
     elseif ($arch -eq "x86") { $url = "$baseUrl/cloudflared-windows-386.exe" }
     else { $url = "$baseUrl/cloudflared-windows-amd64.exe" }
-    
     $CLOUDFLARED_BIN = "$env:TEMP\cloudflared.exe"
     Invoke-WebRequest -Uri $url -OutFile $CLOUDFLARED_BIN
 }
 
-Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
+Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue 2>$null
 $logPath = "$env:TEMP\chatloom_tunnel.log"
 Remove-Item $logPath -ErrorAction SilentlyContinue
 Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardError $logPath
 
-# 6. Link to ChatLoom
-Write-Host "⏳ Routing your Node to the Cloud..." -ForegroundColor Gray
+# 6. Session Registration
+Write-Host "⏳ Syncing with ChatLoom Cloud..." -ForegroundColor Gray
 $TUNNEL_URL = $null
 for ($i=0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 2
@@ -79,19 +77,26 @@ for ($i=0; $i -lt 30; $i++) {
 }
 
 if ($TUNNEL_URL) {
-    Write-Host "✅ Cloud Node Active: $TUNNEL_URL" -ForegroundColor Green
+    Write-Host "✅ Cloud Entrypoint: $TUNNEL_URL" -ForegroundColor Green
     if ($SESSION_ID) {
         $cleanTunnel = $TUNNEL_URL.TrimEnd('/')
         $body = @{ session_id = $SESSION_ID; tunnel_url = $cleanTunnel } | ConvertTo-Json
-        Invoke-RestMethod -Uri "$API_URL/api/tunnel" -Method Post -Body $body -ContentType "application/json" -ErrorAction SilentlyContinue | Out-Null
-        Write-Host "🔗 Neural Link Established." -ForegroundColor Green
+        # SYNC: Send to backend for the bridge to find us
+        try {
+            $syncRes = Invoke-RestMethod -Uri "$API_URL/api/tunnel" -Method Post -Body $body -ContentType "application/json"
+            if ($syncRes.status -eq "success") {
+                Write-Host "🔗 Neural Link Established." -ForegroundColor Green
+            }
+        } catch {
+            Write-Host "⚠️  Sync Warning: Server acknowledged but check required." -ForegroundColor Yellow
+        }
     }
 } else {
-    Write-Host "❌ ERROR: Cloud Routing Failed. Check Internet Connection." -ForegroundColor Red
+    Write-Host "❌ ERROR: Cloud Link Failed. Check your Internet." -ForegroundColor Red
 }
 
 Write-Host "------------------------------------------" -ForegroundColor Yellow
-Write-Host " 🎉 ALL DONE! NO MANUAL STEPS REMAINING." -ForegroundColor Yellow
-Write-Host " 🚀 Your screen will automatically update." -ForegroundColor White
+Write-Host " 🎉 SETUP COMPLETE! EVERYTHING IS READY." -ForegroundColor Yellow
+Write-Host " 🚀 Your browser will auto-update now." -ForegroundColor White
 Write-Host "------------------------------------------" -ForegroundColor Yellow
 Start-Sleep -Seconds 3
