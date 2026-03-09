@@ -228,7 +228,7 @@ function App() {
 
   // Cloudflare Tunnel Polling & Detection Connection
   useEffect(() => {
-    if (step !== "setup" && step !== "detect") return;
+    // Poll constantly regardless of step to catch tunnel URL soon as generated
     const interval = setInterval(async () => {
       try {
         const res = await axios.get(`${BACKEND_URL}/api/tunnel/${sessionId}`);
@@ -237,8 +237,8 @@ function App() {
             `DEBUG: Found tunnel via background sync: ${res.data.tunnel_url}`,
           );
           setTunnelUrl(res.data.tunnel_url);
-          // Only trigger a re-detection automatically if we are hovering on setup/detect waiting for it
-          if (step === "setup" || step === "detect") {
+          // Only trigger an auto re-detection if we are currently on detect or setup with error
+          if (step === "detect" || (step === "setup" && models.length === 0)) {
             handleTopicClick(
               selectedTopic || localStorage.getItem("chat_room"),
               res.data.tunnel_url,
@@ -248,9 +248,9 @@ function App() {
       } catch (e) {
         // No tunnel found or polling error
       }
-    }, 4000); // Check every 4s
+    }, 3000); // Check every 3s for faster setup
     return () => clearInterval(interval);
-  }, [step, sessionId, tunnelUrl, selectedTopic]);
+  }, [step, sessionId, tunnelUrl, selectedTopic, models.length]);
 
   const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
@@ -975,8 +975,8 @@ function App() {
 
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
-    const winCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${window.location.origin}/scripts/setup_windows.ps1 | iex"`;
-    const unixCmd = `curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`;
+    const winCmd = `powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${window.location.origin}'; irm ${window.location.origin}/scripts/setup_windows.ps1 | iex"`;
+    const unixCmd = `export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${window.location.origin}"; curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`;
 
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
@@ -1312,13 +1312,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`$env:CHATLOOM_SESSION="${sessionId}"; $env:CHATLOOM_API="${window.location.origin}"; irm ${window.location.origin}/scripts/setup_windows.ps1 | iex`}
+                      {`powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${window.location.origin}'; irm '${window.location.origin}/scripts/setup_windows.ps1' | iex"`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `$env:CHATLOOM_SESSION="${sessionId}"; $env:CHATLOOM_API="${origin}"; irm ${origin}/scripts/setup_windows.ps1 | iex`,
+                          `powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${origin}'; irm '${origin}/scripts/setup_windows.ps1' | iex"`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
