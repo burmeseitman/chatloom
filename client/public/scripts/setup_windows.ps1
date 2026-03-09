@@ -6,6 +6,9 @@
 $SESSION_ID = $args[0]
 $API_URL = if ($args[1]) { $args[1] } else { "https://chatloom.online" }
 
+# Extract domain from API_URL for CORS
+$domain = if ($API_URL -match '://([^/:]+)') { $matches[1] } else { "chatloom.online" }
+
 Write-Host "------------------------------------------" -ForegroundColor Cyan
 Write-Host " 🐉 Initializing ChatLoom Cloud Bridge..." -ForegroundColor Cyan
 
@@ -28,8 +31,8 @@ if (-not $OLLAMA_FOUND) {
 Write-Host "✅ Ollama detected." -ForegroundColor Green
 
 # 2. Configure Ollama for Browser Access (CORS)
-# We add *.trycloudflare.com to allow requests from the dynamic tunnel
-$SECURE_ORIGINS = "https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*,https://*.trycloudflare.com"
+# We add dynamic domain and tunnel wildcard to allow requests from anywhere
+$SECURE_ORIGINS = "https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*,https://*.trycloudflare.com,http://*.trycloudflare.com,https://$domain,http://$domain"
 $OLLAMA_BIND = "0.0.0.0:11434"
 
 Try {
@@ -97,12 +100,6 @@ for ($i=0; $i -lt 30; $i++) {
             $TUNNEL_URL = $matches[1]
             break
         }
-    }
-    if (-not (Get-Process "cloudflared" -ErrorAction SilentlyContinue)) {
-        Write-Host "❌ Error: Cloudflare process died unexpectedly." -ForegroundColor Red
-        if (Test-Path $logPath) { Get-Content $logPath -Tail 5 }
-        Pause
-        Exit 1
     }
 }
 

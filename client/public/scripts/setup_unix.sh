@@ -9,6 +9,9 @@ API_URL=${2:-https://chatloom.online}
 UNAME_S=$(uname -s)
 UNAME_M=$(uname -m)
 
+# Extract domain from API_URL for CORS
+DOMAIN=$(echo $API_URL | awk -F[/:] '{print $4}')
+
 echo "------------------------------------------"
 echo " 🐉 Initializing ChatLoom Cloud Bridge..."
 echo "------------------------------------------"
@@ -48,23 +51,41 @@ fi
 echo "✅ Ollama detected."
 
 # 2. Configure Ollama for Browser Access (CORS)
-# We add *.trycloudflare.com to allow requests from the dynamic tunnel
-SECURE_ORIGINS="https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*,https://*.trycloudflare.com"
+# We add dynamic domain and tunnel wildcard to allow requests from anywhere
+SECURE_ORIGINS="https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*,https://*.trycloudflare.com,http://*.trycloudflare.com,https://$DOMAIN,http://$DOMAIN"
 OLLAMA_BIND="0.0.0.0:11434"
 
 if [[ "$UNAME_S" == "Darwin" ]]; then
-    echo "🛡️  Applying security profiles..."
+    echo "🛡️  Injecting Security Policies (macOS)..."
+    
+    # Persistent update for Shell
+    SHELL_CONFIG=""
+    if [[ "$SHELL" == */zsh ]]; then SHELL_CONFIG="$HOME/.zshrc"; else SHELL_CONFIG="$HOME/.bashrc"; fi
+    
+    touch "$SHELL_CONFIG"
+    sed -i '' '/OLLAMA_ORIGINS/d' "$SHELL_CONFIG" 2>/dev/null
+    sed -i '' '/OLLAMA_HOST/d' "$SHELL_CONFIG" 2>/dev/null
+    echo "export OLLAMA_HOST=\"$OLLAMA_BIND\"" >> "$SHELL_CONFIG"
+    echo "export OLLAMA_ORIGINS=\"$SECURE_ORIGINS\"" >> "$SHELL_CONFIG"
+    
+    # Immediate session update
     launchctl setenv OLLAMA_HOST "$OLLAMA_BIND"
     launchctl setenv OLLAMA_ORIGINS "$SECURE_ORIGINS"
+    
+    echo "♻️  Restarting Ollama to apply changes..."
     pkill -9 "Ollama" 2>/dev/null || true
     sleep 2
+    
+    # Launching with EXPLICIT environment variables to force override
     if [ -d "/Applications/Ollama.app" ]; then
         OLLAMA_HOST="$OLLAMA_BIND" OLLAMA_ORIGINS="$SECURE_ORIGINS" open "/Applications/Ollama.app"
+    elif [ -d "$HOME/Applications/Ollama.app" ]; then
+        OLLAMA_HOST="$OLLAMA_BIND" OLLAMA_ORIGINS="$SECURE_ORIGINS" open "$HOME/Applications/Ollama.app"
     elif [ -d "/tmp/Ollama.app" ]; then
         OLLAMA_HOST="$OLLAMA_BIND" OLLAMA_ORIGINS="$SECURE_ORIGINS" open "/tmp/Ollama.app"
     fi
 else
-    # Linux
+    # Linux Persistence
     if [ -d "/etc/systemd/system/ollama.service.d" ] || sudo mkdir -p /etc/systemd/system/ollama.service.d 2>/dev/null; then
         echo "[Service]
 Environment=\"OLLAMA_HOST=$OLLAMA_BIND\"
@@ -79,36 +100,18 @@ echo "☁️  Setting up Cloudflare Tunnel..."
 CLOUDFLARED_BIN="cloudflared"
 if ! command -v cloudflared &> /dev/null; then
     echo "⬇️  Downloading respective cloudflared binary ($UNAME_S $UNAME_M)..."
-    
     BASE_URL="https://github.com/cloudflare/cloudflared/releases/latest/download"
     if [[ "$UNAME_S" == "Darwin" ]]; then
-        if [[ "$UNAME_M" == "arm64" ]]; then
-            FILE_NAME="cloudflared-darwin-arm64.tgz"
-        else
-            FILE_NAME="cloudflared-darwin-amd64.tgz"
-        fi
-        
-        if ! curl -L -f "$BASE_URL/$FILE_NAME" -o "/tmp/$FILE_NAME"; then
-            echo "❌ ERROR: Failed to download Cloudflare archive from $BASE_URL/$FILE_NAME."
-            exit 1
-        fi
-        
+        FILE_NAME="cloudflared-darwin-arm64.tgz"
+        [[ "$UNAME_M" != "arm64" ]] && FILE_NAME="cloudflared-darwin-amd64.tgz"
+        curl -L -f "$BASE_URL/$FILE_NAME" -o "/tmp/$FILE_NAME"
         tar -xzf "/tmp/$FILE_NAME" -C /tmp/ 2>/dev/null
         chmod +x /tmp/cloudflared
         CLOUDFLARED_BIN="/tmp/cloudflared"
     else
-        if [[ "$UNAME_M" == "aarch64" ]] || [[ "$UNAME_M" == "arm64" ]]; then
-             URL="$BASE_URL/cloudflared-linux-arm64"
-        elif [[ "$UNAME_M" == "arm"* ]]; then
-             URL="$BASE_URL/cloudflared-linux-arm"
-        else
-             URL="$BASE_URL/cloudflared-linux-amd64"
-        fi
-
-        if ! curl -L -f "$URL" -o /tmp/cloudflared; then
-            echo "❌ ERROR: Failed to download Cloudflare binary."
-            exit 1
-        fi
+        URL="$BASE_URL/cloudflared-linux-amd64"
+        [[ "$UNAME_M" == "aarch64" || "$UNAME_M" == "arm64" ]] && URL="$BASE_URL/cloudflared-linux-arm64"
+        curl -L -f "$URL" -o /tmp/cloudflared
         chmod +x /tmp/cloudflared
         CLOUDFLARED_BIN="/tmp/cloudflared"
     fi
@@ -137,11 +140,6 @@ for i in {1..30}; do
             fi
             break
         fi
-    fi
-    if ! pgrep -f "cloudflared tunnel --url" > /dev/null; then
-         echo "❌ Error: Cloudflare process died unexpectedly."
-         cat /tmp/chatloom_tunnel.log
-         exit 1
     fi
 done
 
