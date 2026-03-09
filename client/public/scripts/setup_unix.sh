@@ -6,6 +6,8 @@
 
 SESSION_ID=$1
 API_URL=${2:-https://chatloom.online}
+UNAME_S=$(uname -s)
+UNAME_M=$(uname -m)
 
 echo "------------------------------------------"
 echo " 🐉 Initializing ChatLoom Cloud Bridge..."
@@ -24,9 +26,22 @@ elif [ -x "/Applications/Ollama.app/Contents/Resources/ollama" ]; then
 fi
 
 if [ -z "$OLLAMA_BIN" ]; then
-    echo "❌ ERROR: Ollama not detected."
-    echo "👉 Please install Ollama first: https://ollama.com"
-    echo "👉 After installing, launch it and run this command again."
+    echo "⚠️  Ollama not detected."
+    echo "------------------------------------------"
+    echo " 🚀 Downloading Ollama Installer..."
+    if [[ "$UNAME_S" == "Darwin" ]]; then
+        echo "🍎 Fetching Mac Package..."
+        curl -L "https://ollama.com/download/Ollama-darwin.zip" -o /tmp/Ollama.zip
+        unzip -q /tmp/Ollama.zip -d /tmp/ 2>/dev/null
+        echo "✅ Downloaded to /tmp/Ollama.app"
+        echo "👉 Please move Ollama to Applications and launch it."
+        open /tmp/
+    else
+        echo "🐧 Running Linux Install Script..."
+        curl -fsSL https://ollama.com/install.sh | sh
+    fi
+    echo "------------------------------------------"
+    echo "👉 After launching Ollama, please run this script again."
     exit 1
 fi
 
@@ -36,15 +51,16 @@ echo "✅ Ollama detected."
 SECURE_ORIGINS="https://chatloom.online,https://*.chatloom.online,http://localhost:*,http://127.0.0.1:*"
 OLLAMA_BIND="0.0.0.0:11434"
 
-if [[ "$(uname -s)" == "Darwin" ]]; then
+if [[ "$UNAME_S" == "Darwin" ]]; then
     echo "🛡️  Applying security profiles..."
     launchctl setenv OLLAMA_HOST "$OLLAMA_BIND"
     launchctl setenv OLLAMA_ORIGINS "$SECURE_ORIGINS"
-    # Restart Ollama to apply
     pkill -9 "Ollama" 2>/dev/null || true
     sleep 2
     if [ -d "/Applications/Ollama.app" ]; then
         OLLAMA_HOST="$OLLAMA_BIND" OLLAMA_ORIGINS="$SECURE_ORIGINS" open "/Applications/Ollama.app"
+    elif [ -d "/tmp/Ollama.app" ]; then
+        OLLAMA_HOST="$OLLAMA_BIND" OLLAMA_ORIGINS="$SECURE_ORIGINS" open "/tmp/Ollama.app"
     fi
 else
     # Linux
@@ -61,26 +77,40 @@ fi
 echo "☁️  Setting up Cloudflare Tunnel..."
 CLOUDFLARED_BIN="cloudflared"
 if ! command -v cloudflared &> /dev/null; then
-    echo "⬇️  Downloading temporary Cloudflare agent..."
-    if [[ "$(uname -s)" == "Darwin" ]]; then
-        curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-amd64 -o /tmp/cloudflared
+    echo "⬇️  Downloading respective cloudflared binary ($UNAME_S $UNAME_M)..."
+    
+    BASE_URL="https://github.com/cloudflare/cloudflared/releases/latest/download"
+    if [[ "$UNAME_S" == "Darwin" ]]; then
+        if [[ "$UNAME_M" == "arm64" ]]; then
+            URL="$BASE_URL/cloudflared-darwin-arm64"
+        else
+            URL="$BASE_URL/cloudflared-darwin-amd64"
+        fi
     else
-        curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /tmp/cloudflared
+        if [[ "$UNAME_M" == "aarch64" ]] || [[ "$UNAME_M" == "arm64" ]]; then
+             URL="$BASE_URL/cloudflared-linux-arm64"
+        elif [[ "$UNAME_M" == "arm"* ]]; then
+             URL="$BASE_URL/cloudflared-linux-arm"
+        else
+             URL="$BASE_URL/cloudflared-linux-amd64"
+        fi
+    fi
+
+    if ! curl -L -f "$URL" -o /tmp/cloudflared; then
+        echo "❌ ERROR: Failed to download Cloudflare binary for $UNAME_S $UNAME_M."
+        exit 1
     fi
     chmod +x /tmp/cloudflared
     CLOUDFLARED_BIN="/tmp/cloudflared"
 fi
 
-# Kill old tunnels
 pkill -f "cloudflared tunnel --url" 2>/dev/null || true
 rm -f /tmp/chatloom_tunnel.log
 
-# Start new tunnel
 echo "⚡ Starting Neural Link..."
-# Cloudflare outputs the URL to stderr, so we redirect stderr to a file and stdout to dev null
 $CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
 
-# 4. Wait for Tunnel URL and Post to Backend (Increased timeout to 60s)
+# 4. Wait for Tunnel URL
 echo "⏳ Routing your AI node to the cloud (may take up to 60s)..."
 TUNNEL_URL=""
 for i in {1..30}; do
@@ -98,7 +128,6 @@ for i in {1..30}; do
             break
         fi
     fi
-    # Quick check if process died
     if ! pgrep -f "cloudflared tunnel --url" > /dev/null; then
          echo "❌ Error: Cloudflare process died unexpectedly."
          cat /tmp/chatloom_tunnel.log
@@ -108,10 +137,6 @@ done
 
 if [ -z "$TUNNEL_URL" ]; then
     echo "❌ ERROR: Tunnel generation timed out."
-    echo "🔍 Technical details from cloudflared:"
-    cat /tmp/chatloom_tunnel.log | tail -n 5
-    echo "---"
-    echo "👉 Suggestions: Check your internet connection or Firewall / VPN settings."
     exit 1
 fi
 

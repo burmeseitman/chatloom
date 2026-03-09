@@ -14,10 +14,14 @@ $ollamaUserPath = "$env:LOCALAPPDATA\Ollama\ollama.exe"
 $OLLAMA_FOUND = if (Get-Command ollama -ErrorAction SilentlyContinue) { $true } elseif (Test-Path $ollamaUserPath) { $true } else { $false }
 
 if (-not $OLLAMA_FOUND) {
-    Write-Host "❌ ERROR: Ollama not detected." -ForegroundColor Red
-    Write-Host "👉 Please install Ollama first: https://ollama.com" -ForegroundColor White
-    Write-Host "👉 After installing, launch it and run this command again." -ForegroundColor White
-    Pause
+    Write-Host "⚠️  Ollama NOT DETECTED" -ForegroundColor Yellow
+    Write-Host "------------------------------------------" -ForegroundColor Cyan
+    Write-Host " 🚀 Downloading Ollama Installer..." -ForegroundColor White
+    $dest = "$env:TEMP\OllamaSetup.exe"
+    Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile $dest
+    Write-Host "✅ Download complete: $dest" -ForegroundColor Green
+    Write-Host "👉 Launching Installer. Please complete setup and run this script again." -ForegroundColor Yellow
+    Start-Process -FilePath $dest -Wait
     Exit 1
 }
 
@@ -31,11 +35,9 @@ Try {
     [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "$OLLAMA_BIND", "User")
     [Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "$SECURE_ORIGINS", "User")
     
-    # Inject into current session for restarting
     $env:OLLAMA_HOST = "$OLLAMA_BIND"
     $env:OLLAMA_ORIGINS = "$SECURE_ORIGINS"
 
-    # Restart Ollama to apply changes
     $ollamaProcess = Get-Process ollama -ErrorAction SilentlyContinue
     if ($ollamaProcess) {
         Write-Host "♻️ Restarting Ollama..." -ForegroundColor Yellow
@@ -52,17 +54,29 @@ Try {
         Start-Process "ollama" "serve" -WindowStyle Hidden -ErrorAction SilentlyContinue
     }
 } Catch {
-    Write-Host "⚠️ Security configuration failed. Try running as Administrator if link doesn't work." -ForegroundColor Yellow
+    Write-Host "⚠️ Security configuration failed. Try running as Administrator." -ForegroundColor Yellow
 }
 
 # 3. Setup Cloudflare Tunnel
 Write-Host "☁️ Setting up Cloudflare Tunnel..." -ForegroundColor Cyan
 $CLOUDFLARED_BIN = "cloudflared"
 if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
-    Write-Host "⬇️ Downloading temporary Cloudflare agent..." -ForegroundColor Gray
+    # Architecture detection for Windows
+    $arch = $env:PROCESSOR_ARCHITECTURE
+    Write-Host "⬇️ Downloading respective cloudflared binary ($arch)..." -ForegroundColor Gray
+    
+    $baseUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download"
+    if ($arch -eq "ARM64") {
+        $url = "$baseUrl/cloudflared-windows-arm64.exe"
+    } elseif ($arch -eq "x86") {
+        $url = "$baseUrl/cloudflared-windows-386.exe"
+    } else {
+        $url = "$baseUrl/cloudflared-windows-amd64.exe"
+    }
+    
     $CLOUDFLARED_BIN = "$env:TEMP\cloudflared.exe"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile $CLOUDFLARED_BIN
+    Invoke-WebRequest -Uri $url -OutFile $CLOUDFLARED_BIN
 }
 
 Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
@@ -70,10 +84,9 @@ $logPath = "$env:TEMP\chatloom_tunnel.log"
 Remove-Item $logPath -ErrorAction SilentlyContinue
 
 Write-Host "⚡ Starting Neural Link..." -ForegroundColor Magenta
-# On Windows, Start-Process captures stderr and stdout separately. Cloudflare URL is usually in stderr.
 Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardError $logPath
 
-# 4. Wait for Tunnel URL and Post to Backend (Increased timeout and robustness)
+# 4. Wait for Tunnel URL
 Write-Host "⏳ Routing your AI node to the cloud (may take up to 60s)..." -ForegroundColor Gray
 $TUNNEL_URL = $null
 for ($i=0; $i -lt 30; $i++) {
@@ -85,7 +98,6 @@ for ($i=0; $i -lt 30; $i++) {
             break
         }
     }
-    # Check if process is still running
     if (-not (Get-Process "cloudflared" -ErrorAction SilentlyContinue)) {
         Write-Host "❌ Error: Cloudflare process died unexpectedly." -ForegroundColor Red
         if (Test-Path $logPath) { Get-Content $logPath -Tail 5 }
@@ -106,11 +118,6 @@ if ($TUNNEL_URL) {
     }
 } else {
     Write-Host "❌ ERROR: Tunnel generation timed out." -ForegroundColor Red
-    if (Test-Path $logPath) {
-        Write-Host "🔍 Technical details from cloudflared:" -ForegroundColor Gray
-        Get-Content $logPath -Tail 5
-    }
-    Write-Host "👉 Suggestions: Check your internet connection or Firewall / VPN settings." -ForegroundColor Yellow
 }
 
 Write-Host "------------------------------------------" -ForegroundColor Yellow
