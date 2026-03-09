@@ -942,16 +942,6 @@ function App() {
     setStep("chat");
   };
 
-  const confirmQuit = () => {
-    socket.emit("leave", { room_id: selectedTopic });
-    localStorage.removeItem("chat_step");
-    localStorage.removeItem("chat_name");
-    localStorage.removeItem("chat_model");
-    localStorage.removeItem("chat_avatar");
-    localStorage.removeItem("chat_room");
-    window.location.assign("/");
-  };
-
   const handleSend = () => {
     if (!inputValue) return;
     // Use the nickname with a suffix to identify the human controller
@@ -975,8 +965,8 @@ function App() {
 
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
-    const winCmd = `powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${window.location.origin}'; irm '${window.location.origin}/scripts/setup_windows.ps1' | iex"`;
-    const unixCmd = `export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${window.location.origin}"; curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`;
+    const winCmd = `powershell -ExecutionPolicy Bypass -Command "irm '${window.location.origin}/scripts/setup_windows.ps1' | iex -args '${sessionId}', '${window.location.origin}'"`;
+    const unixCmd = `curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash -s "${sessionId}" "${window.location.origin}"`;
 
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
@@ -1325,13 +1315,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${window.location.origin}'; irm '${window.location.origin}/scripts/setup_windows.ps1' | iex"`}
+                      {`powershell -ExecutionPolicy Bypass -Command "irm '${window.location.origin}/scripts/setup_windows.ps1' | iex -args '${sessionId}', '${window.location.origin}'"`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `powershell -ExecutionPolicy Bypass -Command "$env:CHATLOOM_SESSION='${sessionId}'; $env:CHATLOOM_API='${origin}'; irm '${origin}/scripts/setup_windows.ps1' | iex"`,
+                          `powershell -ExecutionPolicy Bypass -Command "irm '${origin}/scripts/setup_windows.ps1' | iex -args '${sessionId}', '${origin}'"`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
@@ -1350,13 +1340,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${window.location.origin}"; curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash`}
+                      {`curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash -s "${sessionId}" "${window.location.origin}"`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `export CHATLOOM_SESSION="${sessionId}" CHATLOOM_API="${origin}"; curl -sSL ${origin}/scripts/setup_unix.sh | bash`,
+                          `curl -sSL ${origin}/scripts/setup_unix.sh | bash -s "${sessionId}" "${origin}"`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
