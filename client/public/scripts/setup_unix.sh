@@ -83,15 +83,19 @@ for i in {1..30}; do
     sleep 2
     TUNNEL_URL=$(grep -o 'https://.*[.]trycloudflare[.]com' /tmp/chatloom_tunnel.log | head -n 1)
     if [ -n "$TUNNEL_URL" ]; then
-        echo "⏳ Validating Cloud Entrypoint..."
+        echo "⏳ Validating Neural Link (Local)..."
+        if ! curl -s -f "http://127.0.0.1:11434/api/tags" > /dev/null; then
+            echo "⚠️  Ollama Service is NOT responding locally. Check if another app is using Port 11434."
+        fi
+
+        echo "⏳ Validating Cloud Entrypoint (Global)..."
         CLEAN_URL=$(echo "$TUNNEL_URL" | sed 's/\/$//')
         
-        # Wait up to 10s for the tunnel to actually respond
-        for j in {1..5}; do
+        # Wait up to 30s for the tunnel to actually respond
+        for j in {1..15}; do
             if curl -s -f "$CLEAN_URL/api/tags" > /dev/null; then
                 echo "✅ Cloud Entrypoint: $CLEAN_URL (Active)"
                 if [ -n "$SESSION_ID" ]; then
-                    # SYNC: Send to backend
                     SYNC_RES=$(curl -s -X POST -H "Content-Type: application/json" \
                          -d "{\"session_id\":\"$SESSION_ID\", \"tunnel_url\":\"$CLEAN_URL\"}" \
                          "$API_URL/api/tunnel")
@@ -100,12 +104,13 @@ for i in {1..30}; do
                          echo "🔗 Neural Link Established."
                     fi
                 fi
-                break
+                exit 0
             fi
-            echo "   (Waiting for Cloudflare routing...)"
+            echo "   (Attempt $j/15: Waiting for Cloudflare routing...)"
             sleep 2
         done
-        break
+        echo "❌ ERROR: Cloudflare Routing Timeout. Please check your internet or try again."
+        exit 1
     fi
 done
 

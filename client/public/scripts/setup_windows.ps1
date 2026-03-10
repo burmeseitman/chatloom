@@ -77,11 +77,18 @@ for ($i=0; $i -lt 30; $i++) {
 }
 
 if ($TUNNEL_URL) {
-    Write-Host "⏳ Validating Cloud Entrypoint..." -ForegroundColor Gray
+    Write-Host "⏳ Validating Neural Link (Local)..." -ForegroundColor Gray
+    try {
+        $localTest = Invoke-WebRequest -Uri "http://127.0.0.1:11434/api/tags" -UseBasicParsing -TimeoutSec 5
+    } catch {
+        Write-Host "⚠️  Ollama Service is NOT responding locally. Check if another app is using Port 11434." -ForegroundColor Yellow
+    }
+
+    Write-Host "⏳ Validating Cloud Entrypoint (Global)..." -ForegroundColor Gray
     $cleanTunnel = $TUNNEL_URL.TrimEnd('/')
     
-    # Wait up to 10s for tunnel to respond
-    for ($j=0; $j -lt 5; $j++) {
+    # Wait up to 30s for tunnel to respond
+    for ($j=1; $j -le 15; $j++) {
         try {
             $testReq = Invoke-WebRequest -Uri "$cleanTunnel/api/tags" -UseBasicParsing -TimeoutSec 5
             if ($testReq.StatusCode -eq 200) {
@@ -93,13 +100,15 @@ if ($TUNNEL_URL) {
                         Write-Host "🔗 Neural Link Established." -ForegroundColor Green
                     }
                 }
-                break
+                Exit 0
             }
         } catch {
-            Write-Host "   (Waiting for Cloudflare routing...)" -ForegroundColor Gray
+            Write-Host "   (Attempt $j/15: Waiting for Cloudflare routing...)" -ForegroundColor Gray
             Start-Sleep -Seconds 2
         }
     }
+    Write-Host "❌ ERROR: Cloudflare Routing Timeout. Please check your internet or try again." -ForegroundColor Red
+    Exit 1
 } else {
     Write-Host "❌ ERROR: Cloud Link Failed. Check your Internet." -ForegroundColor Red
 }
