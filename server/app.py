@@ -78,6 +78,10 @@ def serve_setup_script(platform, session_id):
 
 # ===================== BRIDGE API =====================
 
+@app.route('/api/bridge/ping', methods=['GET'])
+def bridge_ping():
+    return jsonify({"status": "online", "message": "ChatLoom Bridge API is active"})
+
 @app.route('/scripts/bridge.py')
 def serve_bridge_script():
     """Serve the bridge.py script with session injection."""
@@ -89,7 +93,7 @@ def serve_bridge_script():
         content = f.read()
     return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
-@app.route('/api/bridge/heartbeat', methods=['POST'])
+@app.route('/api/bridge/heartbeat', methods=['POST'], strict_slashes=False)
 def bridge_heartbeat():
     """Receive heartbeat from local bridge with model data."""
     data = request.json
@@ -106,7 +110,7 @@ def bridge_heartbeat():
     print(f"Bridge heartbeat: {session_id} | {len(models)} models")
     return jsonify({"status": "success"})
 
-@app.route('/api/bridge/poll', methods=['GET'])
+@app.route('/api/bridge/poll', methods=['GET'], strict_slashes=False)
 def bridge_poll():
     """Bridge polls this to check for pending generation tasks."""
     session_id = request.args.get('session_id')
@@ -119,7 +123,7 @@ def bridge_poll():
         return jsonify({"task": task})
     return jsonify({"task": None})
 
-@app.route('/api/bridge/result', methods=['POST'])
+@app.route('/api/bridge/result', methods=['POST'], strict_slashes=False)
 def bridge_result():
     """Receive generation result from bridge."""
     data = request.json
@@ -133,7 +137,7 @@ def bridge_result():
         }
     return jsonify({"status": "success"})
 
-@app.route('/api/bridge/disconnect', methods=['POST'])
+@app.route('/api/bridge/disconnect', methods=['POST'], strict_slashes=False)
 def bridge_disconnect():
     """Bridge notifies it is going offline."""
     data = request.json
