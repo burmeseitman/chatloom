@@ -581,141 +581,114 @@ function App() {
     try {
       console.log(`DEBUG: Detection started. HTTPS: ${isHttps}`);
 
-      // 1. Direct Browser Access
-      const targets = [
-        "http://127.0.0.1:11434/api/tags",
-        "http://localhost:11434/api/tags",
-      ];
-
       const activeTunnel = customTunnel || tunnelUrl;
-      if (activeTunnel) {
-        targets.unshift(`${activeTunnel}/api/tags`);
-      }
+      let detected = false;
+      let lastError = null;
 
-      console.log(`DEBUG: Scanning targets:`, targets);
-      let lastLocalError = null;
+      const processModels = (models, originLabel) => {
+        const filtered = models
+          .filter(
+            (m) =>
+              (m.name || m.model) &&
+              !(m.name || "").toLowerCase().includes("cloud"),
+          )
+          .map((m) => ({
+            name: m.name || m.model,
+            parameter_size: m.details?.parameter_size || m.parameter_size || "unknown",
+            origin: originLabel,
+          }));
+        return filtered;
+      };
 
-      for (const target of targets) {
+      if (activeTunnel && !detected) {
+        const tunnelTarget = `${activeTunnel}/api/tags`;
         try {
-          console.log(`DEBUG: Attempting detection at ${target}...`);
-          const localRes = await axios.get(target, { timeout: 8000 });
-
-          if (localRes.data && localRes.data.models) {
-            console.log(
-              `DEBUG: Found ${localRes.data.models.length} models at ${target}`,
-            );
-            const originLabel = target.includes(".trycloudflare.com")
-              ? "Cloudflare Tunnel"
-              : "Local PC";
-
-            if (localRes.data.models.length === 0) {
-              console.warn(
-                "DEBUG: Ollama found but no local models pulled yet.",
-              );
-              setStatus(
-                "Ollama detected! But your model list is empty. Run 'ollama pull llama3' in terminal.",
-              );
-            }
-
-            const mod = localRes.data.models
-              .filter(
-                (m) =>
-                  (m.name || m.model) &&
-                  !(m.name || "").toLowerCase().includes("cloud"),
-              )
-              .map((m) => ({
-                name: m.name || m.model,
-                parameter_size: m.details?.parameter_size || "unknown",
-                origin: originLabel,
-              }));
-
+          console.log(`DEBUG: Trying tunnel at ${tunnelTarget}...`);
+          const res = await axios.get(tunnelTarget, { timeout: 10000 });
+          if (res.data?.models?.length > 0) {
+            const mod = processModels(res.data.models, "Cloudflare Tunnel");
             if (mod.length > 0) {
+              console.log(`DEBUG: Found ${mod.length} models via tunnel`);
               setModels(mod);
               setStep("setup");
               setIsDetecting(false);
               return;
-            } else {
-              console.warn(
-                `DEBUG: No suitable models found at ${target}. Found:`,
-                localRes.data.models,
-              );
             }
-          } else {
-            console.warn(
-              `DEBUG: Invalid response format from ${target}:`,
-              localRes.data,
-            );
           }
         } catch (e) {
-          lastLocalError = e;
-          console.warn(
-            `Detection failed for ${target}:`,
-            e.message,
-            e.code,
-            e.response?.status,
-          );
+          console.warn(`Tunnel detection failed:`, e.message);
         }
       }
 
-      // 2. Server-Side Bridge fallback
-      setStatus("Direct link blocked (CORS). Trying Secure Bridge...");
       try {
-        const res = await axios.get(
+        console.log(`DEBUG: Trying backend bridge...`);
+        const bridgeRes = await axios.get(
           `${BACKEND_URL}/api/detect-llm?session_id=${sessionId}`,
+          { timeout: 10000 }
         );
-        if (res.data.status === "success" && res.data.models?.length > 0) {
-          console.log("DEBUG: Bridge success!", res.data);
-          const mappedModels = res.data.models.map((m) => ({
+        console.log(`DEBUG: Bridge response:`, bridgeRes.data);
+        if (bridgeRes.data.status === "success" && bridgeRes.data.models?.length > 0) {
+          const mappedModels = bridgeRes.data.models.map((m) => ({
             name: m.name,
             parameter_size: m.parameter_size,
-            origin: res.data.origin || "Neural Link (Bridged)",
+            origin: bridgeRes.data.origin || "Local PC (Bridged)",
           }));
+          console.log(`DEBUG: Bridge success with ${mappedModels.length} models`);
           setModels(mappedModels);
           setStep("setup");
           setIsDetecting(false);
           return;
-        } else {
-          const msg = res.data.message || "Brain node not found.";
-          console.warn("Bridge responded with no models:", msg);
-          setStatus(msg);
         }
       } catch (bridgeErr) {
-        console.error("Bridge link failed:", bridgeErr.message);
-        setStatus("Neural Link disconnected. Please re-run the Setup Script.");
+        console.error("Bridge detection failed:", bridgeErr.message);
+        lastError = bridgeErr;
       }
 
-      // 3. Final Failure - Show Diagnostics
-      if (!isDetecting) return; // Already navigated away
+      if (!isHttps) {
+        const localTargets = [
+          "http://127.0.0.1:11434/api/tags",
+          "http://localhost:11434/api/tags",
+        ];
 
-      let errorMsg = "No local brains found.";
-
-      if (lastLocalError) {
-        if (lastLocalError.response && lastLocalError.response.status === 403) {
-          errorMsg =
-            "Ollama blocked the connection (403 Forbidden). Please run the ChatLoom Setup Script on your PC to Fix Origins.";
-        } else if (lastLocalError.message === "Network Error") {
-          if (isHttps) {
-            errorMsg =
-              "Browser blocked Local Node (Mixed Content). Allow Insecure Content in site settings or visit http://localhost:11434 to unlock.";
-          } else {
-            errorMsg =
-              "Connection Refused. Ollama is not running or is blocked by an Adblocker/Firewall.";
+        for (const target of localTargets) {
+          if (detected) break;
+          try {
+            console.log(`DEBUG: Trying direct access ${target}...`);
+            const localRes = await axios.get(target, { timeout: 8000 });
+            if (localRes.data?.models) {
+              const mod = processModels(localRes.data.models, "Local PC");
+              if (mod.length > 0) {
+                console.log(`DEBUG: Found ${mod.length} models via direct access`);
+                setModels(mod);
+                setStep("setup");
+                setIsDetecting(false);
+                return;
+              }
+            }
+          } catch (e) {
+            console.warn(`Direct access ${target} failed:`, e.message);
+            lastError = e;
           }
-        } else if (lastLocalError.code === "ECONNABORTED") {
-          errorMsg =
-            "Connection Timed Out. Your Local AI node is taking too long to wake up. Refresh to try again.";
-        } else {
-          errorMsg = isHttps
-            ? "Mixed Content Blocked. Please visit http://localhost:11434 separately to grant browser permission, then retry."
-            : "No local brains found. Is Ollama running?";
         }
+      }
+
+      let errorMsg = "No local AI nodes found. ";
+      if (lastError?.response?.status === 403) {
+        errorMsg = "Ollama blocked the connection (403 Forbidden). Run the ChatLoom Setup Script to fix CORS.";
+      } else if (lastError?.message === "Network Error") {
+        errorMsg = isHttps
+          ? "Browser blocked Local Node (Mixed Content). Visit http://localhost:11434 to grant permission."
+          : "Connection Refused. Is Ollama running? Try 'ollama serve' in terminal.";
+      } else if (lastError?.code === "ECONNABORTED") {
+        errorMsg = "Connection timed out. Your AI node is slow to respond.";
+      } else {
+        errorMsg = "Ensure Ollama is running (ollama serve) and models are pulled (ollama pull llama3.2:1b).";
       }
 
       setStatus(errorMsg);
-      setIsDetecting(false);
     } catch (e) {
       console.error("Critical detection failure", e);
-      setStatus("Neural link failure. Is Ollama running?");
+      setStatus("Neural link failure. Check if backend server is running.");
     } finally {
       setIsDetecting(false);
     }

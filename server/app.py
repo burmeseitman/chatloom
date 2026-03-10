@@ -129,14 +129,12 @@ def detect_llm():
     if client_ip and ',' in client_ip:
         client_ip = client_ip.split(',')[0].strip()
     
-    # Strip IPv6-mapped IPv4 prefix
     if client_ip and client_ip.startswith('::ffff:'):
         client_ip = client_ip.replace('::ffff:', '')
         
     print(f"--- Detection Start ---")
     print(f"Session: {session_id} | Client IP: {client_ip}")
 
-    # Case 0: Try the Tunnel associated with this session (STRONGLY RECOMMENDED FOR PROD)
     if session_id and session_id in active_tunnels:
         tunnel_url = active_tunnels[session_id].rstrip('/')
         print(f"Action: Bridging through Tunnel {tunnel_url}")
@@ -176,38 +174,36 @@ def detect_llm():
                 "message": f"Bridge: Cannot reach Tunnel ({str(e)}). Ensure your PC setup script is still running."
             }), 200
 
-    # Case 1: Requester is the Main Server PC (Local)
-    if not client_ip or client_ip in ['127.0.0.1', 'localhost', '::1']:
-        print("Action: Scanning Main PC (Local)")
-        models = get_ollama_models()
-        if models:
-            return jsonify({
-                "status": "success",
-                "models": models,
-                "origin": "Main PC"
-            })
+    print("Action: Scanning local Ollama instances...")
+    models = get_ollama_models()
+    if models:
+        print(f"Found {len(models)} models locally")
+        return jsonify({
+            "status": "success",
+            "models": models,
+            "origin": "Local PC (Bridged)"
+        })
 
-    # Case 2: Requester is a Remote PC (Direct Scan)
-    print(f"Action: Scanning Client IP at {client_ip}")
-    remote_url = f"http://{client_ip}:11434"
-    try:
-        response = requests.get(f"{remote_url}/api/tags", timeout=5)
-        if response.status_code == 200:
-            models = response.json().get('models', [])
-            suitable = [{"name": m.get('name', m.get('model', 'unknown')), "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models]
-            if suitable:
-                return jsonify({
-                    "status": "success",
-                    "models": suitable,
-                    "origin": "Remote Node"
-                })
-    except:
-        pass
+    if client_ip and client_ip not in ['127.0.0.1', 'localhost', '::1', None]:
+        print(f"Action: Scanning Client IP at {client_ip}")
+        remote_url = f"http://{client_ip}:11434"
+        try:
+            response = requests.get(f"{remote_url}/api/tags", timeout=5)
+            if response.status_code == 200:
+                models = response.json().get('models', [])
+                suitable = [{"name": m.get('name', m.get('model', 'unknown')), "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not m.get('name', '').lower().startswith('cloud')]
+                if suitable:
+                    return jsonify({
+                        "status": "success",
+                        "models": suitable,
+                        "origin": "Remote Node"
+                    })
+        except:
+            pass
     
-    # Final fallback message
     return jsonify({
         "status": "error",
-        "message": "ChatLoom could not find your local AI. Did you run the Setup Script in your Terminal?",
+        "message": "ChatLoom could not find your local AI. Ensure Ollama is running (ollama serve) and try refreshing.",
         "session_id_checked": session_id,
         "is_registered": session_id in active_tunnels if session_id else False
     }), 200
