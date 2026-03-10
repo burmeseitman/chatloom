@@ -38,21 +38,25 @@ fi
 
 # 3. Restart Engine (Forcing New Core Config)
 echo "♻️  Resetting Brain Engine..."
-# Ruthless Kill: Port based kill to ensure 11434 is free
+# Forcefully clear the port for the new configuration
 if command -v lsof &> /dev/null; then
+    echo "🛡️  Clearing process on Port 11434..."
     lsof -ti:11434 | xargs kill -9 2>/dev/null || true
-elif command -v fuser &> /dev/null; then
-    fuser -k 11434/tcp &> /dev/null || true
 fi
 pkill -9 "Ollama" 2>/dev/null || true
 pkill -9 "ollama" 2>/dev/null || true
 sleep 3
+
+# Inject the necessary Variables
 export OLLAMA_HOST="127.0.0.1:11434"
 export OLLAMA_ORIGINS="*"
-if [[ "$UNAME_S" == "Darwin" ]]; then
+
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "🍏 Applying MacOS Security Policies..."
     launchctl setenv OLLAMA_HOST "127.0.0.1:11434"
     launchctl setenv OLLAMA_ORIGINS "*"
 fi
+
 nohup $OLLAMA_CMD serve >/tmp/ollama_engine.log 2>&1 &
 echo "🚀 Engine Active with Neural Access."
 
@@ -86,7 +90,8 @@ fi
 
 pkill -f "cloudflared tunnel" 2>/dev/null || true
 rm -f /tmp/chatloom_tunnel.log
-$CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
+# Force HTTP2 protocol for maximum compatibility with ISP firewalls
+$CLOUDFLARED_BIN tunnel --protocol http2 --url http://127.0.0.1:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
 
 # 6. Session Registration
 echo "⏳ Syncing with ChatLoom Cloud..."
@@ -95,39 +100,38 @@ for i in {1..30}; do
     sleep 2
     TUNNEL_URL=$(grep -o 'https://.*[.]trycloudflare[.]com' /tmp/chatloom_tunnel.log | head -n 1)
     if [ -n "$TUNNEL_URL" ]; then
-        echo "⏳ Neural Link Warming Up (Wait up to 45s)..."
         CLEAN_URL=$(echo "$TUNNEL_URL" | sed 's/\/$//')
+        echo "✅ Created Secret Gateway: $CLEAN_URL"
+        echo "⏳ Synchronizing Neural Link (Wait up to 60s)..."
         
-        # Wait up to 45s (22 attempts) for the tunnel to actually respond
-        for j in {1..22}; do
-            # Check local first (using 127.0.0.1 explicitly)
+        # Wait up to 60s (30 attempts) for the tunnel to actually respond
+        for j in {1..30}; do
+            # Check local first
             if ! curl -s "http://127.0.0.1:11434/api/tags" > /dev/null; then
-                 # Force start if service died or not responding
                  nohup $OLLAMA_CMD serve >/tmp/ollama_engine.log 2>&1 &
             fi
 
+            # Check public gateway
             if curl -s -f "$CLEAN_URL/api/tags" > /dev/null; then
-                echo "✅ Neural Link Active: $CLEAN_URL"
+                echo "🚀 NEURAL LINK ACTIVE!"
                 if [ -n "$SESSION_ID" ]; then
                     SYNC_RES=$(curl -s -X POST -H "Content-Type: application/json" \
                          -d "{\"session_id\":\"$SESSION_ID\", \"tunnel_url\":\"$CLEAN_URL\"}" \
                          "$API_URL/api/tunnel")
                     
                     if [[ "$SYNC_RES" == *"success"* ]]; then
-                         echo "🔗 Cloud Sync Complete."
+                         echo "🔗 Cloud Sync: SUCCESS."
                     fi
                 fi
                 exit 0
             fi
-            [[ $((j % 3)) -eq 0 ]] && echo "   (Routing Sync: $j/22...)"
+            [[ $((j % 5)) -eq 0 ]] && echo "   (Pulse: $j/30... Checking Cloudflare routing)"
             sleep 2
         done
-        echo "❌ ERROR: Routing Timeout."
-        echo "💡 TIP: Try closing Ollama from your System Tray/Top Bar first, then re-run this script."
+        echo "❌ ERROR: Neural Link could not go global."
+        echo "💡 DIAGNOSTICS: Try visiting the Gateway URL above in your browser."
         echo "--- CLOUDFLARED ERROR LOGS ---"
-        tail -n 10 /tmp/chatloom_tunnel.log
-        echo "--- OLLAMA ENGINE LOGS ---"
-        tail -n 5 /tmp/ollama_engine.log
+        tail -n 12 /tmp/chatloom_tunnel.log
         exit 1
     fi
 done
