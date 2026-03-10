@@ -123,23 +123,23 @@ def get_setting(key, default=None):
 
 @app.route('/api/detect-llm', methods=['GET'])
 def detect_llm():
-    """Detect models from the Main Server PC. Serves as a bridge when client cannot reach local Ollama."""
+    """Bridge: detect models via tunnel, then local fallback."""
     session_id = request.args.get('session_id')
     client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if client_ip and ',' in client_ip:
         client_ip = client_ip.split(',')[0].strip()
-    
     if client_ip and client_ip.startswith('::ffff:'):
         client_ip = client_ip.replace('::ffff:', '')
         
     print(f"--- Detection Start ---")
     print(f"Session: {session_id} | Client IP: {client_ip}")
 
+    # === STEP A: Try tunnel (if registered) with SHORT timeout ===
     if session_id and session_id in active_tunnels:
         tunnel_url = active_tunnels[session_id].rstrip('/')
-        print(f"Action: Bridging through Tunnel {tunnel_url}")
+        print(f"Action: Trying Tunnel {tunnel_url} (5s timeout)")
         try:
-            res = requests.get(f"{tunnel_url}/api/tags", timeout=12)
+            res = requests.get(f"{tunnel_url}/api/tags", timeout=5)
             if res.status_code == 200:
                 models = res.json().get('models', [])
                 suitable = []
@@ -150,45 +150,33 @@ def detect_llm():
                         "name": name,
                         "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')
                     })
-                
                 if suitable:
+                    print(f"Tunnel SUCCESS: {len(suitable)} models found")
                     return jsonify({
                         "status": "success",
                         "models": suitable,
-                        "origin": "Neural Link (Bridged)"
+                        "origin": "Your PC (via Tunnel)"
                     })
-                else:
-                    return jsonify({
-                        "status": "error",
-                        "message": "Ollama detected through tunnel, but no local models found. Run 'ollama pull llama3' on your PC."
-                    }), 200
-            else:
-                return jsonify({
-                    "status": "error", 
-                    "message": f"Bridge: Tunnel responded with error {res.status_code}. Is Ollama active?"
-                }), 200
         except Exception as e:
-            print(f"Tunnel bridge failed: {e}")
-            return jsonify({
-                "status": "error", 
-                "message": f"Bridge: Cannot reach Tunnel ({str(e)}). Ensure your PC setup script is still running."
-            }), 200
+            print(f"Tunnel unreachable ({e}), falling through to local scan...")
+            # DO NOT return here — fall through to local detection below!
 
+    # === STEP B: Try local Ollama on the server machine ===
     print("Action: Scanning local Ollama instances...")
     models = get_ollama_models()
     if models:
-        print(f"Found {len(models)} models locally")
+        print(f"Local SUCCESS: {len(models)} models found")
         return jsonify({
             "status": "success",
             "models": models,
             "origin": "Local PC (Bridged)"
         })
 
+    # === STEP C: Try remote client IP (rare, but possible) ===
     if client_ip and client_ip not in ['127.0.0.1', 'localhost', '::1', None]:
         print(f"Action: Scanning Client IP at {client_ip}")
-        remote_url = f"http://{client_ip}:11434"
         try:
-            response = requests.get(f"{remote_url}/api/tags", timeout=5)
+            response = requests.get(f"http://{client_ip}:11434/api/tags", timeout=3)
             if response.status_code == 200:
                 models = response.json().get('models', [])
                 suitable = [{"name": m.get('name', m.get('model', 'unknown')), "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not m.get('name', '').lower().startswith('cloud')]
@@ -201,9 +189,10 @@ def detect_llm():
         except:
             pass
     
+    print("All detection methods exhausted. No models found.")
     return jsonify({
         "status": "error",
-        "message": "ChatLoom could not find your local AI. Ensure Ollama is running (ollama serve) and try refreshing.",
+        "message": "ChatLoom could not find your local AI. Ensure Ollama is running and re-run the Setup Script.",
         "session_id_checked": session_id,
         "is_registered": session_id in active_tunnels if session_id else False
     }), 200
