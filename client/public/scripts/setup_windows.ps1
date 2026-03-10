@@ -2,8 +2,8 @@
 #   ChatLoom - Neural Link Setup (Win)
 # ==========================================
 
-$SESSION_ID = $args[0]
-$API_URL = if ($args[1]) { $args[1] } else { "https://chatloom.online" }
+$SESSION_ID = if ($args[0]) { $args[0] } else { $env:CHATLOOM_SESSION }
+$API_URL = if ($args[1]) { $args[1] } else { if ($env:CHATLOOM_API) { $env:CHATLOOM_API } else { "https://chatloom.online" } }
 
 Write-Host "------------------------------------------" -ForegroundColor Cyan
 Write-Host " 🐉 Initializing ChatLoom Neural Link..." -ForegroundColor Cyan

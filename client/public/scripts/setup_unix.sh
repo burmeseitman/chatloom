@@ -3,8 +3,8 @@
 #   ChatLoom - Neural Link Setup (Unix/Mac)
 # ==========================================
 
-SESSION_ID=$1
-API_URL=${2:-https://chatloom.online}
+SESSION_ID=${1:-$CHATLOOM_SESSION}
+API_URL=${2:-${CHATLOOM_API:-https://chatloom.online}}
 UNAME_S=$(uname -s)
 UNAME_M=$(uname -m)
 

@@ -141,54 +141,76 @@ def detect_llm():
         tunnel_url = active_tunnels[session_id].rstrip('/')
         print(f"Action: Bridging through Tunnel {tunnel_url}")
         try:
-            res = requests.get(f"{tunnel_url}/api/tags", timeout=15)
+            res = requests.get(f"{tunnel_url}/api/tags", timeout=12)
             if res.status_code == 200:
                 models = res.json().get('models', [])
-                suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not (m.get('name') or "").lower().startswith("cloud")]
-                return jsonify({
-                    "status": "success",
-                    "models": suitable,
-                    "all_found": [m['name'] for m in models],
-                    "origin": "Neural Link (Bridged)"
-                })
+                suitable = []
+                for m in models:
+                    name = m.get('name') or m.get('model', 'unknown')
+                    if name.lower().startswith("cloud"): continue
+                    suitable.append({
+                        "name": name,
+                        "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')
+                    })
+                
+                if suitable:
+                    return jsonify({
+                        "status": "success",
+                        "models": suitable,
+                        "origin": "Neural Link (Bridged)"
+                    })
+                else:
+                    return jsonify({
+                        "status": "error",
+                        "message": "Ollama detected through tunnel, but no local models found. Run 'ollama pull llama3' on your PC."
+                    }), 200
             else:
-                return jsonify({"status": "error", "message": f"Bridge: Tunnel returned status {res.status_code}"}), 200
+                return jsonify({
+                    "status": "error", 
+                    "message": f"Bridge: Tunnel responded with error {res.status_code}. Is Ollama active?"
+                }), 200
         except Exception as e:
             print(f"Tunnel bridge failed: {e}")
-            return jsonify({"status": "error", "message": f"Bridge: Tunnel request failed ({str(e)})"}), 200
+            return jsonify({
+                "status": "error", 
+                "message": f"Bridge: Cannot reach Tunnel ({str(e)}). Ensure your PC setup script is still running."
+            }), 200
 
     # Case 1: Requester is the Main Server PC (Local)
     if not client_ip or client_ip in ['127.0.0.1', 'localhost', '::1']:
         print("Action: Scanning Main PC (Local)")
         models = get_ollama_models()
-        return jsonify({
-            "status": "success" if models else "error",
-            "models": models,
-            "origin": "Main PC"
-        })
+        if models:
+            return jsonify({
+                "status": "success",
+                "models": models,
+                "origin": "Main PC"
+            })
 
     # Case 2: Requester is a Remote PC (Direct Scan)
     print(f"Action: Scanning Client IP at {client_ip}")
     remote_url = f"http://{client_ip}:11434"
     try:
-        response = requests.get(f"{remote_url}/api/tags", timeout=10)
+        response = requests.get(f"{remote_url}/api/tags", timeout=5)
         if response.status_code == 200:
             models = response.json().get('models', [])
-            suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models]
-            return jsonify({
-                "status": "success",
-                "models": suitable,
-                "origin": "Remote Node"
-            })
+            suitable = [{"name": m.get('name', m.get('model', 'unknown')), "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models]
+            if suitable:
+                return jsonify({
+                    "status": "success",
+                    "models": suitable,
+                    "origin": "Remote Node"
+                })
     except:
         pass
     
+    # Final fallback message
     return jsonify({
         "status": "error",
-        "message": "No local brain node detected. Registration not found or timeout.",
+        "message": "ChatLoom could not find your local AI. Did you run the Setup Script in your Terminal?",
         "session_id_checked": session_id,
         "is_registered": session_id in active_tunnels if session_id else False
-    }), 404
+    }), 200
 
 @app.route('/api/generate-bridge', methods=['POST'])
 def generate_bridge():
