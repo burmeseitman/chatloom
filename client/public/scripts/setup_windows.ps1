@@ -60,7 +60,7 @@ if (-not (Get-Command cloudflared -ErrorAction SilentlyContinue)) {
 Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue 2>$null
 $logPath = "$env:TEMP\chatloom_tunnel.log"
 Remove-Item $logPath -ErrorAction SilentlyContinue
-Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardError $logPath
+Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --url http://localhost:11434" -WindowStyle Hidden -RedirectStandardError $logPath
 
 # 6. Session Registration
 Write-Host "⏳ Syncing with ChatLoom Cloud..." -ForegroundColor Gray
@@ -77,37 +77,32 @@ for ($i=0; $i -lt 30; $i++) {
 }
 
 if ($TUNNEL_URL) {
-    Write-Host "⏳ Validating Neural Link (Local)..." -ForegroundColor Gray
-    try {
-        $localTest = Invoke-WebRequest -Uri "http://127.0.0.1:11434/api/tags" -UseBasicParsing -TimeoutSec 5
-    } catch {
-        Write-Host "⚠️  Ollama Service is NOT responding locally. Check if another app is using Port 11434." -ForegroundColor Yellow
-    }
-
-    Write-Host "⏳ Validating Cloud Entrypoint (Global)..." -ForegroundColor Gray
+    Write-Host "⏳ Neural Link Warming Up (Wait up to 45s)..." -ForegroundColor Gray
     $cleanTunnel = $TUNNEL_URL.TrimEnd('/')
     
-    # Wait up to 30s for tunnel to respond
-    for ($j=1; $j -le 15; $j++) {
+    # Wait up to 45s (22 attempts) for tunnel to respond
+    for ($j=1; $j -le 22; $j++) {
         try {
             $testReq = Invoke-WebRequest -Uri "$cleanTunnel/api/tags" -UseBasicParsing -TimeoutSec 5
             if ($testReq.StatusCode -eq 200) {
-                Write-Host "✅ Cloud Entrypoint: $cleanTunnel (Active)" -ForegroundColor Green
+                Write-Host "✅ Neural Link Active: $cleanTunnel" -ForegroundColor Green
                 if ($SESSION_ID) {
                     $body = @{ session_id = $SESSION_ID; tunnel_url = $cleanTunnel } | ConvertTo-Json
                     $syncRes = Invoke-RestMethod -Uri "$API_URL/api/tunnel" -Method Post -Body $body -ContentType "application/json"
                     if ($syncRes.status -eq "success") {
-                        Write-Host "🔗 Neural Link Established." -ForegroundColor Green
+                        Write-Host "🔗 Cloud Sync Complete." -ForegroundColor Green
                     }
                 }
                 Exit 0
             }
         } catch {
-            Write-Host "   (Attempt $j/15: Waiting for Cloudflare routing...)" -ForegroundColor Gray
+            if ($j % 3 -eq 0) { Write-Host "   (Routing Sync: $j/22...)" -ForegroundColor Gray }
             Start-Sleep -Seconds 2
         }
     }
-    Write-Host "❌ ERROR: Cloudflare Routing Timeout. Please check your internet or try again." -ForegroundColor Red
+    Write-Host "❌ ERROR: Routing Timeout." -ForegroundColor Red
+    Write-Host "--- CLOUDFLARED ERROR LOGS ---" -ForegroundColor Gray
+    Get-Content $logPath -Tail 10
     Exit 1
 } else {
     Write-Host "❌ ERROR: Cloud Link Failed. Check your Internet." -ForegroundColor Red

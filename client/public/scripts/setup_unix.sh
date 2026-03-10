@@ -74,7 +74,7 @@ fi
 
 pkill -f "cloudflared tunnel" 2>/dev/null || true
 rm -f /tmp/chatloom_tunnel.log
-$CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
+$CLOUDFLARED_BIN tunnel --url http://localhost:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
 
 # 6. Session Registration
 echo "⏳ Syncing with ChatLoom Cloud..."
@@ -83,33 +83,38 @@ for i in {1..30}; do
     sleep 2
     TUNNEL_URL=$(grep -o 'https://.*[.]trycloudflare[.]com' /tmp/chatloom_tunnel.log | head -n 1)
     if [ -n "$TUNNEL_URL" ]; then
-        echo "⏳ Validating Neural Link (Local)..."
-        if ! curl -s -f "http://127.0.0.1:11434/api/tags" > /dev/null; then
-            echo "⚠️  Ollama Service is NOT responding locally. Check if another app is using Port 11434."
-        fi
-
-        echo "⏳ Validating Cloud Entrypoint (Global)..."
+        echo "⏳ Neural Link Warming Up (Wait up to 45s)..."
         CLEAN_URL=$(echo "$TUNNEL_URL" | sed 's/\/$//')
         
-        # Wait up to 30s for the tunnel to actually respond
-        for j in {1..15}; do
+        # Wait up to 45s (22 attempts) for the tunnel to actually respond
+        for j in {1..22}; do
+            # Check local first
+            if ! curl -s "http://localhost:11434/api/tags" > /dev/null; then
+                 # Force start if service died
+                 nohup $OLLAMA_CMD serve >/tmp/ollama_engine.log 2>&1 &
+            fi
+
             if curl -s -f "$CLEAN_URL/api/tags" > /dev/null; then
-                echo "✅ Cloud Entrypoint: $CLEAN_URL (Active)"
+                echo "✅ Neural Link Active: $CLEAN_URL"
                 if [ -n "$SESSION_ID" ]; then
                     SYNC_RES=$(curl -s -X POST -H "Content-Type: application/json" \
                          -d "{\"session_id\":\"$SESSION_ID\", \"tunnel_url\":\"$CLEAN_URL\"}" \
                          "$API_URL/api/tunnel")
                     
                     if [[ "$SYNC_RES" == *"success"* ]]; then
-                         echo "🔗 Neural Link Established."
+                         echo "🔗 Cloud Sync Complete."
                     fi
                 fi
                 exit 0
             fi
-            echo "   (Attempt $j/15: Waiting for Cloudflare routing...)"
+            [[ $((j % 3)) -eq 0 ]] && echo "   (Routing Sync: $j/22...)"
             sleep 2
         done
-        echo "❌ ERROR: Cloudflare Routing Timeout. Please check your internet or try again."
+        echo "❌ ERROR: Routing Timeout."
+        echo "--- CLOUDFLARED ERROR LOGS ---"
+        tail -n 10 /tmp/chatloom_tunnel.log
+        echo "--- OLLAMA ENGINE LOGS ---"
+        tail -n 5 /tmp/ollama_engine.log
         exit 1
     fi
 done
