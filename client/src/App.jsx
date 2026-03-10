@@ -185,6 +185,7 @@ function App() {
   const [status, setStatus] = useState("Exploring topics...");
   const [showQuitModal, setShowQuitModal] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
+  const isDetectingRef = useRef(false); // ref version for use inside closures/effects
   const [personas, setPersonas] = useState([]);
   const [selectedPersona, setSelectedPersona] = useState(null);
   const [showPersonaForm, setShowPersonaForm] = useState(false);
@@ -226,10 +227,11 @@ function App() {
     }
   }, [tunnelUrl]);
 
-  // Cloudflare Tunnel Polling & Detection Connection
+  // Cloudflare Tunnel Polling — only auto-forward when not already detecting
   useEffect(() => {
-    // Poll constantly regardless of step to catch tunnel URL soon as generated
     const interval = setInterval(async () => {
+      // Guard: never interrupt an active detection flow
+      if (isDetectingRef.current) return;
       try {
         const res = await axios.get(`${BACKEND_URL}/api/tunnel/${sessionId}`);
         if (res.data.tunnel_url && res.data.tunnel_url !== tunnelUrl) {
@@ -238,20 +240,24 @@ function App() {
           );
           setTunnelUrl(res.data.tunnel_url);
           localStorage.setItem("chat_tunnel_url", res.data.tunnel_url);
-
-          // AUTO-FORWARD: If we find a tunnel, immediately try to discover models and advance the user
-          const targetTopic =
-            selectedTopic ||
-            localStorage.getItem("chat_room") ||
-            "General Chat";
-          handleTopicClick(targetTopic, res.data.tunnel_url);
+          // Only auto-forward if user is on topics or detect screen and not busy
+          if (
+            !isDetectingRef.current &&
+            (step === "topics" || step === "detect")
+          ) {
+            const targetTopic =
+              selectedTopic ||
+              localStorage.getItem("chat_room") ||
+              "General Chat";
+            handleTopicClick(targetTopic, res.data.tunnel_url);
+          }
         }
       } catch (e) {
-        // No tunnel found or polling error
+        // No tunnel found or polling error — silent
       }
-    }, 2500); // Check slightly faster
+    }, 3000);
     return () => clearInterval(interval);
-  }, [step, sessionId, tunnelUrl, selectedTopic, models.length]);
+  }, [step, sessionId, tunnelUrl, selectedTopic]);
 
   const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
@@ -569,17 +575,26 @@ function App() {
   };
 
   const handleTopicClick = async (topicName, customTunnel = null) => {
+    // Guard: prevent concurrent detection runs
+    if (isDetectingRef.current) {
+      console.warn("Detection already in progress — skipping duplicate call.");
+      return;
+    }
+
     setSelectedTopic(topicName);
     localStorage.setItem("chat_room", topicName);
+    isDetectingRef.current = true;
     setIsDetecting(true);
     setStep("detect");
     setStatus("Looking for your brain node...");
     setModels([]);
 
     const isHttps = window.location.protocol === "https:";
+    const controller = new AbortController();
+    const signal = controller.signal;
 
-    const processModels = (models, originLabel) => {
-      return models
+    const processModels = (models, originLabel) =>
+      models
         .filter(
           (m) =>
             (m.name || m.model) &&
@@ -591,127 +606,129 @@ function App() {
             m.details?.parameter_size || m.parameter_size || "unknown",
           origin: originLabel,
         }));
+
+    const done = (models, step = "setup") => {
+      setModels(models);
+      setStep(step);
+      isDetectingRef.current = false;
+      setIsDetecting(false);
+    };
+
+    const fail = (msg) => {
+      setStatus(msg);
+      isDetectingRef.current = false;
+      setIsDetecting(false);
     };
 
     try {
       console.log(`DEBUG: Detection started. HTTPS: ${isHttps}`);
 
-      // ─────────────────────────────────────────────
-      // STEP 1: Direct Client-Side Access (Best case)
-      // Try local Ollama directly from the browser
-      // ─────────────────────────────────────────────
+      // ─────────────────────────────────────────────────────
+      // STEP 1: Direct Client Browser → Ollama (best case)
+      // Works on HTTP. Blocked on HTTPS by Mixed Content rules.
+      // ─────────────────────────────────────────────────────
       const localTargets = [
         "http://127.0.0.1:11434/api/tags",
         "http://localhost:11434/api/tags",
       ];
 
       for (const target of localTargets) {
+        if (signal.aborted) break;
         try {
-          console.log(`DEBUG: Trying direct local access: ${target}`);
+          console.log(`DEBUG: Trying direct local: ${target}`);
           setStatus("Scanning your local AI engine...");
-          const localRes = await axios.get(target, { timeout: 5000 });
+          const localRes = await axios.get(target, { timeout: 5000, signal });
           if (localRes.data?.models) {
             const mod = processModels(localRes.data.models, "Local PC");
             if (mod.length > 0) {
               console.log(
-                `DEBUG: ✅ Found ${mod.length} models via direct local access`,
+                `DEBUG: ✅ ${mod.length} models found via direct access`,
               );
-              setModels(mod);
-              setStep("setup");
-              setIsDetecting(false);
-              return;
+              return done(mod);
             } else {
-              setStatus(
+              return fail(
                 "Ollama found but no models. Run: ollama pull llama3.2:1b",
               );
-              setIsDetecting(false);
-              return;
             }
           }
         } catch (e) {
-          console.warn(
-            `Direct local ${target} failed (expected on HTTPS):`,
-            e.message,
-          );
+          if (e.name === "CanceledError" || e.name === "AbortError") return;
+          console.warn(`Direct ${target} failed:`, e.message);
         }
       }
 
-      // ─────────────────────────────────────────────
-      // STEP 2: Cloudflare Tunnel (if user ran setup)
-      // ─────────────────────────────────────────────
+      // ─────────────────────────────────────────────────────
+      // STEP 2: Via Cloudflare Tunnel (if setup script was run)
+      // ─────────────────────────────────────────────────────
       const activeTunnel = customTunnel || tunnelUrl;
-      if (activeTunnel) {
+      if (activeTunnel && !signal.aborted) {
         try {
           const tunnelTarget = `${activeTunnel}/api/tags`;
           console.log(`DEBUG: Trying tunnel: ${tunnelTarget}`);
           setStatus("Connecting via your Cloudflare Tunnel...");
-          const res = await axios.get(tunnelTarget, { timeout: 10000 });
+          const res = await axios.get(tunnelTarget, { timeout: 10000, signal });
           if (res.data?.models) {
             const mod = processModels(res.data.models, "Cloudflare Tunnel");
             if (mod.length > 0) {
-              console.log(`DEBUG: ✅ Found ${mod.length} models via tunnel`);
-              setModels(mod);
-              setStep("setup");
-              setIsDetecting(false);
-              return;
+              console.log(`DEBUG: ✅ ${mod.length} models found via tunnel`);
+              return done(mod);
             }
           }
         } catch (e) {
+          if (e.name === "CanceledError" || e.name === "AbortError") return;
           console.warn(`Tunnel detection failed:`, e.message);
         }
       }
 
       // ─────────────────────────────────────────────────────────────────
-      // STEP 3: Backend Server Bridge (Last Resort)
-      // Only used when direct & tunnel both fail (CORS/Mixed Content block)
+      // STEP 3: Backend Server Bridge (last resort for CORS/Mixed Content)
       // ─────────────────────────────────────────────────────────────────
-      try {
-        console.log(`DEBUG: Falling back to backend bridge...`);
-        setStatus("Direct link blocked (CORS). Trying Secure Bridge...");
-        const bridgeRes = await axios.get(
-          `${BACKEND_URL}/api/detect-llm?session_id=${sessionId}`,
-          { timeout: 10000 },
-        );
-        console.log(`DEBUG: Bridge response:`, bridgeRes.data);
-        if (
-          bridgeRes.data.status === "success" &&
-          bridgeRes.data.models?.length > 0
-        ) {
-          const mappedModels = bridgeRes.data.models.map((m) => ({
-            name: m.name,
-            parameter_size: m.parameter_size,
-            origin: bridgeRes.data.origin || "Neural Link (Bridged)",
-          }));
-          console.log(
-            `DEBUG: ✅ Bridge success with ${mappedModels.length} models`,
+      if (!signal.aborted) {
+        try {
+          console.log(`DEBUG: Falling back to backend bridge...`);
+          setStatus("Direct access blocked. Trying Secure Bridge...");
+          const bridgeRes = await axios.get(
+            `${BACKEND_URL}/api/detect-llm?session_id=${sessionId}`,
+            { timeout: 12000, signal },
           );
-          setModels(mappedModels);
-          setStep("setup");
-          setIsDetecting(false);
-          return;
-        } else {
-          const msg = bridgeRes.data.message || "No AI found via bridge.";
+          console.log(`DEBUG: Bridge response:`, bridgeRes.data);
+          if (
+            bridgeRes.data.status === "success" &&
+            bridgeRes.data.models?.length > 0
+          ) {
+            const mapped = bridgeRes.data.models.map((m) => ({
+              name: m.name,
+              parameter_size: m.parameter_size,
+              origin: bridgeRes.data.origin || "Neural Link (Bridged)",
+            }));
+            console.log(
+              `DEBUG: ✅ Bridge success with ${mapped.length} models`,
+            );
+            return done(mapped);
+          }
+          const msg = bridgeRes.data?.message || "No AI found via bridge.";
           console.warn("Bridge returned no models:", msg);
-          setStatus(msg);
+          return fail(msg);
+        } catch (e) {
+          if (e.name === "CanceledError" || e.name === "AbortError") return;
+          console.error("Bridge detection failed:", e.message);
         }
-      } catch (bridgeErr) {
-        console.error("Bridge detection failed:", bridgeErr.message);
       }
 
       // ─────────────────────────────────────────
-      // STEP 4: All failed — show guidance
+      // STEP 4: All methods failed
       // ─────────────────────────────────────────
-      setStatus(
+      fail(
         isHttps
-          ? "Mixed Content blocked. Run the One-Click Setup Script to create a secure tunnel, or visit http://localhost:11434 to grant browser permission."
-          : "No local AI found. Ensure Ollama is running: open Ollama app or run 'ollama serve' in Terminal.",
+          ? "Mixed Content blocked. Run the One-Click Setup Script to create a secure Cloudflare Tunnel."
+          : "No local AI found. Open the Ollama app or run 'ollama serve' in Terminal.",
       );
     } catch (e) {
       console.error("Critical detection failure", e);
-      setStatus("Neural link failure. Check if backend server is running.");
-    } finally {
-      setIsDetecting(false);
+      fail("Neural link failure. Check if backend server is running.");
     }
+
+    return () => controller.abort();
   };
 
   const handleSavePersona = async () => {
