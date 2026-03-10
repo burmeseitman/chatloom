@@ -28,7 +28,6 @@ import {
   Book,
   Shield,
   Zap,
-  Cloud,
   Database,
   Star,
   Home,
@@ -215,49 +214,38 @@ function App() {
     return id;
   });
 
-  const [tunnelUrl, setTunnelUrl] = useState(
-    () => localStorage.getItem("chat_tunnel_url") || null,
-  );
+  const [bridgeActive, setBridgeActive] = useState(false);
 
-  useEffect(() => {
-    if (tunnelUrl) {
-      localStorage.setItem("chat_tunnel_url", tunnelUrl);
-    } else {
-      localStorage.removeItem("chat_tunnel_url");
-    }
-  }, [tunnelUrl]);
-
-  // Cloudflare Tunnel Polling — only auto-forward when not already detecting
+  // Bridge Status Polling — check if user's bridge.py is active
   useEffect(() => {
     const interval = setInterval(async () => {
-      // Guard: never interrupt an active detection flow
       if (isDetectingRef.current) return;
       try {
-        const res = await axios.get(`${BACKEND_URL}/api/tunnel/${sessionId}`);
-        if (res.data.tunnel_url && res.data.tunnel_url !== tunnelUrl) {
+        const res = await axios.get(
+          `${BACKEND_URL}/api/bridge/status/${sessionId}`,
+        );
+        if (
+          res.data.active &&
+          res.data.models?.length > 0 &&
+          (step === "topics" || step === "detect")
+        ) {
           console.log(
-            `DEBUG: Found tunnel via background sync: ${res.data.tunnel_url}`,
+            `DEBUG: Bridge active with ${res.data.models.length} models`,
           );
-          setTunnelUrl(res.data.tunnel_url);
-          localStorage.setItem("chat_tunnel_url", res.data.tunnel_url);
-          // Only auto-forward if user is on topics or detect screen and not busy
-          if (
-            !isDetectingRef.current &&
-            (step === "topics" || step === "detect")
-          ) {
+          if (!isDetectingRef.current) {
             const targetTopic =
               selectedTopic ||
               localStorage.getItem("chat_room") ||
               "General Chat";
-            handleTopicClick(targetTopic, res.data.tunnel_url);
+            handleTopicClick(targetTopic);
           }
         }
       } catch (e) {
-        // No tunnel found or polling error — silent
+        // Silent
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [step, sessionId, tunnelUrl, selectedTopic]);
+  }, [step, sessionId, selectedTopic]);
 
   const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
@@ -574,7 +562,7 @@ function App() {
     }
   };
 
-  const handleTopicClick = async (topicName, customTunnel = null) => {
+  const handleTopicClick = async (topicName) => {
     // Guard: prevent concurrent detection runs
     if (isDetectingRef.current) {
       console.warn("Detection already in progress — skipping duplicate call.");
@@ -657,31 +645,8 @@ function App() {
         }
       }
 
-      // ─────────────────────────────────────────────────────
-      // STEP 2: Via Cloudflare Tunnel (if setup script was run)
-      // ─────────────────────────────────────────────────────
-      const activeTunnel = customTunnel || tunnelUrl;
-      if (activeTunnel && !signal.aborted) {
-        try {
-          const tunnelTarget = `${activeTunnel}/api/tags`;
-          console.log(`DEBUG: Trying tunnel: ${tunnelTarget}`);
-          setStatus("Connecting via your Cloudflare Tunnel...");
-          const res = await axios.get(tunnelTarget, { timeout: 10000, signal });
-          if (res.data?.models) {
-            const mod = processModels(res.data.models, "Cloudflare Tunnel");
-            if (mod.length > 0) {
-              console.log(`DEBUG: ✅ ${mod.length} models found via tunnel`);
-              return done(mod);
-            }
-          }
-        } catch (e) {
-          if (e.name === "CanceledError" || e.name === "AbortError") return;
-          console.warn(`Tunnel detection failed:`, e.message);
-        }
-      }
-
       // ─────────────────────────────────────────────────────────────────
-      // STEP 3: Backend Server Bridge (last resort for CORS/Mixed Content)
+      // STEP 2: Backend Bridge (bridge.py pushes data to backend)
       // ─────────────────────────────────────────────────────────────────
       if (!signal.aborted) {
         try {
@@ -719,9 +684,7 @@ function App() {
       // STEP 4: All methods failed
       // ─────────────────────────────────────────
       fail(
-        isHttps
-          ? "Mixed Content blocked. Run the One-Click Setup Script to create a secure Cloudflare Tunnel."
-          : "No local AI found. Open the Ollama app or run 'ollama serve' in Terminal.",
+        "No AI found. Run the Bridge command shown on ChatLoom to connect your Ollama.",
       );
     } catch (e) {
       console.error("Critical detection failure", e);
@@ -861,50 +824,24 @@ function App() {
           keep_alive: hardwareRef.current === "low" ? 0 : "5m",
         };
 
-        // Attempt 0: Try Cloudflare Tunnel if available
-        const currentTunnelUrl = localStorage.getItem("chat_tunnel_url");
-        if (currentTunnelUrl) {
-          try {
-            res = await axios.post(
-              `${currentTunnelUrl}/api/generate`,
-              generateData,
-              { timeout: profile.timeout },
-            );
-          } catch (e) {
-            console.warn("Tunnel generate failed", e);
-          }
-        }
-
-        if (!res) {
-          // Attempt 1: Shared Browser Access (Localhost)
-          try {
-            res = await axios.post(
-              "http://localhost:11434/api/generate",
-              generateData,
-              { timeout: profile.timeout },
-            );
-          } catch (localErr) {
-            console.warn("Localhost failed, trying 127.0.0.1...", localErr);
-            // Attempt 2: IP Fallback
-            try {
-              res = await axios.post(
-                "http://127.0.0.1:11434/api/generate",
-                generateData,
-                { timeout: profile.timeout },
-              );
-            } catch (ipErr) {
-              console.warn(
-                "Direct access blocked. Using Backend Bridge...",
-                ipErr,
-              );
-              // Attempt 3: Production Bridge (Bypass Mixed Content)
-              res = await axios.post(
-                `${BACKEND_URL}/api/generate-bridge`,
-                generateData,
-                { timeout: profile.timeout + 5000 },
-              );
-            }
-          }
+        // Attempt 1: Direct Ollama (Localhost) — works on HTTP sites
+        try {
+          res = await axios.post(
+            "http://127.0.0.1:11434/api/generate",
+            generateData,
+            { timeout: profile.timeout },
+          );
+        } catch (localErr) {
+          console.warn(
+            "Direct access blocked. Using Backend Bridge...",
+            localErr,
+          );
+          // Attempt 2: Backend Bridge (bridge.py handles forwarding)
+          res = await axios.post(
+            `${BACKEND_URL}/api/generate-bridge`,
+            { ...generateData, session_id: sessionId },
+            { timeout: profile.timeout + 30000 },
+          );
         }
 
         socket.emit("llm_response", {
@@ -937,13 +874,6 @@ function App() {
       processQueue();
     });
 
-    socket.on("kill_tunnel", () => {
-      console.log("Server requested tunnel shutdown. LocalStorage cleared.");
-      // Note: The browser cannot natively kill the OS 'cloudflared' process
-      // due to security sandboxes. The tunnel remains open on the OS level pending a PC reboot or manual kill.
-      setTunnelUrl(null);
-    });
-
     return () => {
       socket.off("connect");
       socket.off("disconnect");
@@ -953,7 +883,6 @@ function App() {
       socket.off("update_participants");
       socket.off("llm_action");
       socket.off("request_generation");
-      socket.off("kill_tunnel");
     };
   }, [sessionId]);
 
@@ -1003,19 +932,9 @@ function App() {
     setInputValue("");
   };
 
-  const [userPlatform, setUserPlatform] = useState("unknown");
-
-  useEffect(() => {
-    const ua = navigator.userAgent.toLowerCase();
-    if (ua.indexOf("win") !== -1) setUserPlatform("windows");
-    else if (ua.indexOf("mac") !== -1 || ua.indexOf("linux") !== -1)
-      setUserPlatform("unix");
-  }, []);
-
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
-    const winCmd = `powershell -ExecutionPolicy Bypass -Command "irm '${window.location.origin}/scripts/setup_windows.ps1' | iex -args '${sessionId}', '${window.location.origin}'"`;
-    const unixCmd = `curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash -s "${sessionId}" "${window.location.origin}"`;
+    const unixCmd = `curl -sSL ${window.location.origin}/scripts/bridge.py | python3 - "${sessionId}" "${window.location.origin}"`;
 
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
@@ -1053,51 +972,28 @@ function App() {
           >
             <div className="flex items-center gap-2 mb-1 px-1">
               <span className="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">
-                Ollama One-Click Setup
+                Ollama Bridge Setup
               </span>
               <div className="h-px w-8 bg-purple-500/20" />
             </div>
-            {(userPlatform === "windows" || userPlatform === "unknown") && (
-              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-blue-500/30">
-                <Monitor size={14} className="text-blue-400 shrink-0" />
-                <code
-                  className="text-[10px] font-mono text-gray-400 truncate flex-1"
-                  title={winCmd}
-                >
-                  {winCmd}
-                </code>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(winCmd);
-                  }}
-                  className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
-                  title="Copy Windows command"
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
-            )}
-
-            {(userPlatform === "unix" || userPlatform === "unknown") && (
-              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] group transition-all hover:border-pink-500/30">
-                <Cpu size={14} className="text-pink-400 shrink-0" />
-                <code
-                  className="text-[10px] font-mono text-gray-400 truncate flex-1"
-                  title={unixCmd}
-                >
-                  {unixCmd}
-                </code>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(unixCmd);
-                  }}
-                  className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
-                  title="Copy Unix command"
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-pink-500/30">
+              <Cpu size={14} className="text-pink-400 shrink-0" />
+              <code
+                className="text-[10px] font-mono text-gray-400 truncate flex-1"
+                title={unixCmd}
+              >
+                {unixCmd}
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(unixCmd);
+                }}
+                className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                title="Copy Bridge command"
+              >
+                <Copy size={13} />
+              </button>
+            </div>
           </motion.div>
         </header>
 
@@ -1359,18 +1255,18 @@ function App() {
                 <div className="group relative">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
-                      <Monitor size={12} /> Windows (PowerShell - Admin)
+                      <Monitor size={12} /> Windows (PowerShell / CMD)
                     </span>
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`powershell -ExecutionPolicy Bypass -Command "irm '${window.location.origin}/scripts/setup_windows.ps1' | iex -args '${sessionId}', '${window.location.origin}'"`}
+                      {`python3 -c "import urllib.request,sys;exec(urllib.request.urlopen('${window.location.origin}/scripts/bridge.py').read())" "${sessionId}" "${window.location.origin}"`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `powershell -ExecutionPolicy Bypass -Command "irm '${origin}/scripts/setup_windows.ps1' | iex -args '${sessionId}', '${origin}'"`,
+                          `python3 -c "import urllib.request,sys;exec(urllib.request.urlopen('${origin}/scripts/bridge.py').read())" "${sessionId}" "${origin}"`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
@@ -1389,13 +1285,13 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`curl -sSL ${window.location.origin}/scripts/setup_unix.sh | bash -s "${sessionId}" "${window.location.origin}"`}
+                      {`curl -sSL ${window.location.origin}/scripts/bridge.py | python3 - "${sessionId}" "${window.location.origin}"`}
                     </code>
                     <button
                       onClick={() => {
                         const origin = window.location.origin;
                         navigator.clipboard.writeText(
-                          `curl -sSL ${origin}/scripts/setup_unix.sh | bash -s "${sessionId}" "${origin}"`,
+                          `curl -sSL ${origin}/scripts/bridge.py | python3 - "${sessionId}" "${origin}"`,
                         );
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
@@ -1532,21 +1428,6 @@ function App() {
                   </div>
                 )}
               </div>
-
-              {tunnelUrl && (
-                <div className="mb-6 p-4 rounded-xl border border-blue-500/20 bg-blue-500/5">
-                  <label className="block text-[10px] font-bold text-blue-400 mb-2 uppercase tracking-widest flex items-center gap-2">
-                    <Cloud size={14} /> Cloudflare Secure Tunnel
-                  </label>
-                  <code className="text-[11px] font-mono text-gray-300 pointer-events-none select-all break-all">
-                    {tunnelUrl}
-                  </code>
-                  <p className="text-[10px] text-gray-500 mt-2 italic">
-                    Your AI node is securely exposed to the neural network via
-                    this unique, private URL.
-                  </p>
-                </div>
-              )}
 
               <div>
                 <label className="block text-sm font-bold text-gray-400 mb-2 uppercase tracking-widest">

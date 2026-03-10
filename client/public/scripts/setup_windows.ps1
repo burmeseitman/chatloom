@@ -72,98 +72,31 @@ if ([string]::IsNullOrWhiteSpace($models)) {
     Write-Host "✅ Knowledge Base ready." -ForegroundColor Green
 }
 
-# 7. Launch Cloudflare Tunnel
-Write-Host "☁️  Establishing Secure Tunnel..." -ForegroundColor Cyan
-$CLOUDFLARED_BIN = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source
-if (-not $CLOUDFLARED_BIN) {
-    $arch = $env:PROCESSOR_ARCHITECTURE
-    $baseUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download"
-    if ($arch -eq "ARM64") { $url = "$baseUrl/cloudflared-windows-arm64.exe" }
-    elseif ($arch -eq "x86") { $url = "$baseUrl/cloudflared-windows-386.exe" }
-    else { $url = "$baseUrl/cloudflared-windows-amd64.exe" }
-    $CLOUDFLARED_BIN = "$env:TEMP\cloudflared.exe"
-    Write-Host "⬇️  Downloading cloudflared..." -ForegroundColor Gray
-    Invoke-WebRequest -Uri $url -OutFile $CLOUDFLARED_BIN
-}
+# 7. Launch Neural Bridge
+Write-Host "🐉 Launching Neural Bridge..." -ForegroundColor Cyan
 
-Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue 2>$null
-Start-Sleep -Seconds 1
-$logPath = "$env:TEMP\chatloom_tunnel.log"
-Remove-Item $logPath -ErrorAction SilentlyContinue
-
-# Use http2 protocol for ISP firewall compatibility
-Start-Process -FilePath $CLOUDFLARED_BIN -ArgumentList "tunnel --protocol http2 --url http://127.0.0.1:11434" -WindowStyle Hidden -RedirectStandardError $logPath
-Write-Host "✅ Cloudflared started. Extracting public URL..." -ForegroundColor Green
-
-# 8. Wait for tunnel URL to appear (up to 60 seconds)
-$TUNNEL_URL = $null
-for ($i=0; $i -lt 30; $i++) {
-    Start-Sleep -Seconds 2
-    if (Test-Path $logPath) {
-        $logContent = Get-Content $logPath -Raw -ErrorAction SilentlyContinue
-        if ($logContent -match '(https://[a-zA-Z0-9-]+\.trycloudflare\.com)') {
-            $TUNNEL_URL = $matches[1]
-            break
-        }
-    }
-}
-
-if (-not $TUNNEL_URL) {
-    Write-Host "❌ Could not get tunnel URL. Cloudflared logs:" -ForegroundColor Red
-    Get-Content $logPath -Tail 15 -ErrorAction SilentlyContinue
+# Check for Python
+if (!(Get-Command python -ErrorAction SilentlyContinue) -and !(Get-Command python3 -ErrorAction SilentlyContinue)) {
+    Write-Host "❌ Python 3 not detected. Please install Python to use the Bridge." -ForegroundColor Red
     Exit 1
 }
 
-$cleanTunnel = $TUNNEL_URL.TrimEnd('/')
-Write-Host ""
-Write-Host "✅ Public Gateway: $cleanTunnel" -ForegroundColor Green
-Write-Host ""
+$pyCmd = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" }
 
-# 9. Verify tunnel is working (up to 60s)
-Write-Host "⏳ Verifying Tunnel → Ollama connection (up to 60s)..." -ForegroundColor Gray
-$tunnelOK = $false
-for ($j=1; $j -le 30; $j++) {
-    try {
-        $testReq = Invoke-WebRequest -Uri "$cleanTunnel/api/tags" -UseBasicParsing -TimeoutSec 5
-        if ($testReq.StatusCode -eq 200) {
-            $tunnelOK = $true
-            Write-Host "🚀 TUNNEL VERIFIED! Traffic flowing through." -ForegroundColor Green
-            break
-        }
-    } catch {
-        if ($j % 5 -eq 0) { Write-Host "   (Attempt $j/30...)" -ForegroundColor Gray }
-        Start-Sleep -Seconds 2
-    }
+# Kill existing bridge
+Get-Process | Where-Object { $_.ProcessName -like "*python*" -and $_.CommandLine -like "*bridge.py*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+
+Write-Host "⬇️  Syncing Bridge Logic..." -ForegroundColor Gray
+$bridgePath = "$env:TEMP\chatloom_bridge.py"
+Invoke-WebRequest -Uri "$API_URL/scripts/bridge.py" -OutFile $bridgePath
+
+if (!(Test-Path $bridgePath)) {
+    Write-Host "❌ Failed to download bridge script from $API_URL" -ForegroundColor Red
+    Exit 1
 }
 
-if (-not $tunnelOK) {
-    Write-Host ""
-    Write-Host "⚠️  Tunnel URL obtained but Ollama connection through it failed." -ForegroundColor Yellow
-    Write-Host "   Your Gateway URL: $cleanTunnel" -ForegroundColor White
-    Write-Host "   Try opening this URL in your browser. If you see JSON, it's working." -ForegroundColor White
-    Get-Content $logPath -Tail 10 -ErrorAction SilentlyContinue
-}
+Write-Host "🚀 BRIDGE STARTING..." -ForegroundColor Green
+Write-Host "------------------------------------------"
+# Execute bridge.py
+& $pyCmd $bridgePath "$SESSION_ID" "$API_URL"
 
-# 10. Register with ChatLoom Server
-if ($SESSION_ID) {
-    Write-Host "🔗 Registering with ChatLoom Server..." -ForegroundColor Gray
-    try {
-        $body = @{ session_id = $SESSION_ID; tunnel_url = $cleanTunnel } | ConvertTo-Json
-        $syncRes = Invoke-RestMethod -Uri "$API_URL/api/tunnel" -Method Post -Body $body -ContentType "application/json"
-        if ($syncRes.status -eq "success") {
-            Write-Host "🔗 Cloud Sync: SUCCESS. ChatLoom will now detect your AI." -ForegroundColor Green
-        }
-    } catch {
-        Write-Host "⚠️  Sync failed: $_" -ForegroundColor Yellow
-    }
-}
-
-Write-Host ""
-Write-Host "------------------------------------------" -ForegroundColor Yellow
-Write-Host " 🎉 SETUP COMPLETE!" -ForegroundColor Yellow
-Write-Host " 🌐 Gateway: $cleanTunnel" -ForegroundColor White
-if ($SESSION_ID) {
-    Write-Host " 🚀 Your browser will auto-update now." -ForegroundColor White
-}
-Write-Host "------------------------------------------" -ForegroundColor Yellow
-Start-Sleep -Seconds 3

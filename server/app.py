@@ -23,6 +23,9 @@ OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
 
 active_tunnels = {}
+bridge_sessions = {}   # {session_id: {"models": [...], "last_seen": timestamp}}
+pending_tasks = {}     # {session_id: [{task_id, model, prompt, ...}]}
+task_results = {}      # {task_id: {"status", "response", ...}}
 
 @app.route('/api/tunnel', methods=['POST'])
 def register_tunnel():
@@ -72,6 +75,85 @@ def serve_setup_script(platform, session_id):
         return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ===================== BRIDGE API =====================
+
+@app.route('/scripts/bridge.py')
+def serve_bridge_script():
+    """Serve the bridge.py script with session injection."""
+    session_id = request.args.get('session_id', '')
+    script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client', 'public', 'scripts', 'bridge.py')
+    if not os.path.exists(script_path):
+        return "Bridge script not found", 404
+    with open(script_path, 'r') as f:
+        content = f.read()
+    return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
+
+@app.route('/api/bridge/heartbeat', methods=['POST'])
+def bridge_heartbeat():
+    """Receive heartbeat from local bridge with model data."""
+    data = request.json
+    session_id = data.get('session_id')
+    models = data.get('models', [])
+    if not session_id:
+        return jsonify({"status": "error", "message": "Missing session_id"}), 400
+    
+    bridge_sessions[session_id] = {
+        "models": models,
+        "last_seen": time.time(),
+        "ollama_url": data.get('ollama_url', 'http://127.0.0.1:11434')
+    }
+    print(f"Bridge heartbeat: {session_id} | {len(models)} models")
+    return jsonify({"status": "success"})
+
+@app.route('/api/bridge/poll', methods=['GET'])
+def bridge_poll():
+    """Bridge polls this to check for pending generation tasks."""
+    session_id = request.args.get('session_id')
+    if not session_id:
+        return jsonify({"task": None})
+    
+    tasks = pending_tasks.get(session_id, [])
+    if tasks:
+        task = tasks.pop(0)
+        return jsonify({"task": task})
+    return jsonify({"task": None})
+
+@app.route('/api/bridge/result', methods=['POST'])
+def bridge_result():
+    """Receive generation result from bridge."""
+    data = request.json
+    task_id = data.get('task_id')
+    if task_id:
+        task_results[task_id] = {
+            "status": data.get('status', 'error'),
+            "response": data.get('response', ''),
+            "model": data.get('model', ''),
+            "timestamp": time.time()
+        }
+    return jsonify({"status": "success"})
+
+@app.route('/api/bridge/disconnect', methods=['POST'])
+def bridge_disconnect():
+    """Bridge notifies it is going offline."""
+    data = request.json
+    session_id = data.get('session_id')
+    if session_id and session_id in bridge_sessions:
+        del bridge_sessions[session_id]
+        print(f"Bridge disconnected: {session_id}")
+    return jsonify({"status": "success"})
+
+@app.route('/api/bridge/status/<session_id>', methods=['GET'])
+def bridge_status(session_id):
+    """Check if a bridge is active for this session."""
+    bridge = bridge_sessions.get(session_id)
+    if bridge and (time.time() - bridge.get('last_seen', 0)) < 15:
+        return jsonify({
+            "active": True,
+            "models": bridge.get('models', []),
+            "last_seen": bridge.get('last_seen')
+        })
+    return jsonify({"active": False, "models": []})
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -123,83 +205,56 @@ def get_setting(key, default=None):
 
 @app.route('/api/detect-llm', methods=['GET'])
 def detect_llm():
-    """Bridge: detect models via tunnel, then local fallback."""
+    """Detect AI models — checks bridge first, then tunnel, then local."""
     session_id = request.args.get('session_id')
-    client_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if client_ip and ',' in client_ip:
-        client_ip = client_ip.split(',')[0].strip()
-    if client_ip and client_ip.startswith('::ffff:'):
-        client_ip = client_ip.replace('::ffff:', '')
-        
-    print(f"--- Detection Start ---")
-    print(f"Session: {session_id} | Client IP: {client_ip}")
+    print(f"--- Detection Start (session: {session_id}) ---")
 
-    # === STEP A: Try tunnel (if registered) with SHORT timeout ===
+    # === PRIORITY 1: Check Bridge (new approach) ===
+    if session_id and session_id in bridge_sessions:
+        bridge = bridge_sessions[session_id]
+        age = time.time() - bridge.get('last_seen', 0)
+        if age < 15 and bridge.get('models'):
+            print(f"Bridge HIT: {len(bridge['models'])} models (age: {age:.0f}s)")
+            return jsonify({
+                "status": "success",
+                "models": bridge['models'],
+                "origin": "Your PC (Bridge)"
+            })
+        elif age >= 15:
+            print(f"Bridge STALE: last seen {age:.0f}s ago")
+
+    # === PRIORITY 2: Check Tunnel (legacy) ===
     if session_id and session_id in active_tunnels:
         tunnel_url = active_tunnels[session_id].rstrip('/')
-        print(f"Action: Trying Tunnel {tunnel_url} (5s timeout)")
+        print(f"Trying Tunnel: {tunnel_url}")
         try:
             res = requests.get(f"{tunnel_url}/api/tags", timeout=5)
             if res.status_code == 200:
                 models = res.json().get('models', [])
-                suitable = []
-                for m in models:
-                    name = m.get('name') or m.get('model', 'unknown')
-                    if name.lower().startswith("cloud"): continue
-                    suitable.append({
-                        "name": name,
-                        "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')
-                    })
+                suitable = [{"name": m.get('name', 'unknown'), "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not (m.get('name', '') or '').lower().startswith('cloud')]
                 if suitable:
-                    print(f"Tunnel SUCCESS: {len(suitable)} models found")
-                    return jsonify({
-                        "status": "success",
-                        "models": suitable,
-                        "origin": "Your PC (via Tunnel)"
-                    })
-        except Exception as e:
-            print(f"Tunnel unreachable ({e}), falling through to local scan...")
-            # DO NOT return here — fall through to local detection below!
+                    print(f"Tunnel SUCCESS: {len(suitable)} models")
+                    return jsonify({"status": "success", "models": suitable, "origin": "Your PC (Tunnel)"})
+        except:
+            print("Tunnel unreachable, continuing...")
 
-    # === STEP B: Try local Ollama on the server machine ===
-    print("Action: Scanning local Ollama instances...")
+    # === PRIORITY 3: Local Ollama on server ===
+    print("Trying local Ollama...")
     models = get_ollama_models()
     if models:
-        print(f"Local SUCCESS: {len(models)} models found")
-        return jsonify({
-            "status": "success",
-            "models": models,
-            "origin": "Local PC (Bridged)"
-        })
+        print(f"Local SUCCESS: {len(models)} models")
+        return jsonify({"status": "success", "models": models, "origin": "Local PC (Server)"})
 
-    # === STEP C: Try remote client IP (rare, but possible) ===
-    if client_ip and client_ip not in ['127.0.0.1', 'localhost', '::1', None]:
-        print(f"Action: Scanning Client IP at {client_ip}")
-        try:
-            response = requests.get(f"http://{client_ip}:11434/api/tags", timeout=3)
-            if response.status_code == 200:
-                models = response.json().get('models', [])
-                suitable = [{"name": m.get('name', m.get('model', 'unknown')), "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not m.get('name', '').lower().startswith('cloud')]
-                if suitable:
-                    return jsonify({
-                        "status": "success",
-                        "models": suitable,
-                        "origin": "Remote Node"
-                    })
-        except:
-            pass
-    
-    print("All detection methods exhausted. No models found.")
+    print("All detection methods exhausted.")
     return jsonify({
         "status": "error",
-        "message": "ChatLoom could not find your local AI. Ensure Ollama is running and re-run the Setup Script.",
-        "session_id_checked": session_id,
-        "is_registered": session_id in active_tunnels if session_id else False
+        "message": "No AI found. Run the Bridge command shown on ChatLoom to connect your Ollama.",
+        "bridge_active": session_id in bridge_sessions if session_id else False
     }), 200
 
 @app.route('/api/generate-bridge', methods=['POST'])
 def generate_bridge():
-    """Bridge for generation when browser-to-ollama direct access is blocked (Mixed Content)."""
+    """Bridge for AI generation — uses bridge queue OR direct Ollama."""
     data = request.json
     model = data.get('model')
     prompt = data.get('prompt')
@@ -210,28 +265,47 @@ def generate_bridge():
     if not model or not prompt:
         return jsonify({"error": "Missing model or prompt"}), 400
 
-    # Prioritize specific tunnel for this session if it exists
-    target_url = OLLAMA_URL
-    if session_id and session_id in active_tunnels:
-        target_url = active_tunnels[session_id].rstrip('/')
-        print(f"Action: Bridging generation through tunnel {target_url}")
-
-    try:
-        # We proxy the request to the local Ollama instance (either localhost or tunnel)
-        response = requests.post(
-            f"{target_url}/api/generate",
-            json={
+    # === TRY 1: Bridge queue (bridge.py handles generation) ===
+    if session_id and session_id in bridge_sessions:
+        bridge = bridge_sessions[session_id]
+        if (time.time() - bridge.get('last_seen', 0)) < 15:
+            import uuid
+            task_id = str(uuid.uuid4())[:8]
+            task = {
+                "task_id": task_id,
                 "model": model,
                 "prompt": prompt,
                 "system": system,
-                "options": options,
-                "stream": False
-            },
-            timeout=180 # Longer timeout for generation
+                "options": options
+            }
+            pending_tasks.setdefault(session_id, []).append(task)
+            print(f"Generation queued for bridge: {task_id}")
+            
+            # Wait for bridge to complete (max 120s)
+            for _ in range(240):
+                if task_id in task_results:
+                    result = task_results.pop(task_id)
+                    if result['status'] == 'success':
+                        return jsonify({"response": result['response'], "model": result['model']})
+                    else:
+                        return jsonify({"error": result.get('response', 'Generation failed')}), 500
+                time.sleep(0.5)
+            return jsonify({"error": "Bridge timeout — generation took too long"}), 504
+
+    # === TRY 2: Direct Ollama (if on same machine as backend) ===
+    target_url = OLLAMA_URL
+    if session_id and session_id in active_tunnels:
+        target_url = active_tunnels[session_id].rstrip('/')
+
+    try:
+        response = requests.post(
+            f"{target_url}/api/generate",
+            json={"model": model, "prompt": prompt, "system": system, "options": options, "stream": False},
+            timeout=180
         )
         return jsonify(response.json()), response.status_code
     except Exception as e:
-        print(f"Bridge Error: {str(e)}")
+        print(f"Generate Error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/personas', methods=['GET', 'POST'])
