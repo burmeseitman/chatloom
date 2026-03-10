@@ -77,18 +77,27 @@ for ($i=0; $i -lt 30; $i++) {
 }
 
 if ($TUNNEL_URL) {
-    Write-Host "✅ Cloud Entrypoint: $TUNNEL_URL" -ForegroundColor Green
-    if ($SESSION_ID) {
-        $cleanTunnel = $TUNNEL_URL.TrimEnd('/')
-        $body = @{ session_id = $SESSION_ID; tunnel_url = $cleanTunnel } | ConvertTo-Json
-        # SYNC: Send to backend for the bridge to find us
+    Write-Host "⏳ Validating Cloud Entrypoint..." -ForegroundColor Gray
+    $cleanTunnel = $TUNNEL_URL.TrimEnd('/')
+    
+    # Wait up to 10s for tunnel to respond
+    for ($j=0; $j -lt 5; $j++) {
         try {
-            $syncRes = Invoke-RestMethod -Uri "$API_URL/api/tunnel" -Method Post -Body $body -ContentType "application/json"
-            if ($syncRes.status -eq "success") {
-                Write-Host "🔗 Neural Link Established." -ForegroundColor Green
+            $testReq = Invoke-WebRequest -Uri "$cleanTunnel/api/tags" -UseBasicParsing -TimeoutSec 5
+            if ($testReq.StatusCode -eq 200) {
+                Write-Host "✅ Cloud Entrypoint: $cleanTunnel (Active)" -ForegroundColor Green
+                if ($SESSION_ID) {
+                    $body = @{ session_id = $SESSION_ID; tunnel_url = $cleanTunnel } | ConvertTo-Json
+                    $syncRes = Invoke-RestMethod -Uri "$API_URL/api/tunnel" -Method Post -Body $body -ContentType "application/json"
+                    if ($syncRes.status -eq "success") {
+                        Write-Host "🔗 Neural Link Established." -ForegroundColor Green
+                    }
+                }
+                break
             }
         } catch {
-            Write-Host "⚠️  Sync Warning: Server acknowledged but check required." -ForegroundColor Yellow
+            Write-Host "   (Waiting for Cloudflare routing...)" -ForegroundColor Gray
+            Start-Sleep -Seconds 2
         }
     }
 } else {

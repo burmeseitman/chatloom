@@ -83,20 +83,28 @@ for i in {1..30}; do
     sleep 2
     TUNNEL_URL=$(grep -o 'https://.*[.]trycloudflare[.]com' /tmp/chatloom_tunnel.log | head -n 1)
     if [ -n "$TUNNEL_URL" ]; then
-        echo "✅ Cloud Entrypoint: $TUNNEL_URL"
-        if [ -n "$SESSION_ID" ]; then
-            CLEAN_URL=$(echo "$TUNNEL_URL" | sed 's/\/$//')
-            # SYNC: Send to backend for the bridge to find us
-            SYNC_RES=$(curl -s -X POST -H "Content-Type: application/json" \
-                 -d "{\"session_id\":\"$SESSION_ID\", \"tunnel_url\":\"$CLEAN_URL\"}" \
-                 "$API_URL/api/tunnel")
-            
-            if [[ "$SYNC_RES" == *"success"* ]]; then
-                 echo "🔗 Neural Link Established."
-            else
-                 echo "⚠️  Sync Warning: Server acknowledged but check required."
+        echo "⏳ Validating Cloud Entrypoint..."
+        CLEAN_URL=$(echo "$TUNNEL_URL" | sed 's/\/$//')
+        
+        # Wait up to 10s for the tunnel to actually respond
+        for j in {1..5}; do
+            if curl -s -f "$CLEAN_URL/api/tags" > /dev/null; then
+                echo "✅ Cloud Entrypoint: $CLEAN_URL (Active)"
+                if [ -n "$SESSION_ID" ]; then
+                    # SYNC: Send to backend
+                    SYNC_RES=$(curl -s -X POST -H "Content-Type: application/json" \
+                         -d "{\"session_id\":\"$SESSION_ID\", \"tunnel_url\":\"$CLEAN_URL\"}" \
+                         "$API_URL/api/tunnel")
+                    
+                    if [[ "$SYNC_RES" == *"success"* ]]; then
+                         echo "🔗 Neural Link Established."
+                    fi
+                fi
+                break
             fi
-        fi
+            echo "   (Waiting for Cloudflare routing...)"
+            sleep 2
+        done
         break
     fi
 done

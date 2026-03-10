@@ -658,30 +658,35 @@ function App() {
       }
 
       // 2. Server-Side Bridge fallback
-      setStatus("Direct link blocked. Trying Secure Bridge...");
+      setStatus("Direct link blocked (CORS). Trying Secure Bridge...");
       try {
         const res = await axios.get(
           `${BACKEND_URL}/api/detect-llm?session_id=${sessionId}`,
         );
         if (res.data.status === "success" && res.data.models?.length > 0) {
-          setModels(
-            res.data.models.map((m) => ({
-              ...m,
-              origin: res.data.origin || "Neural Link",
-            })),
-          );
+          console.log("DEBUG: Bridge success!", res.data);
+          const mappedModels = res.data.models.map((m) => ({
+            name: m.name,
+            parameter_size: m.parameter_size,
+            origin: res.data.origin || "Neural Link (Bridged)",
+          }));
+          setModels(mappedModels);
           setStep("setup");
           setIsDetecting(false);
           return;
-        } else if (res.data.status === "error") {
-          console.warn("Bridge responded with error:", res.data.message);
-          setStatus(`Link Weak: ${res.data.message}`);
+        } else {
+          const msg = res.data.message || "Brain node not found.";
+          console.warn("Bridge responded with no models:", msg);
+          setStatus(msg);
         }
       } catch (bridgeErr) {
         console.error("Bridge link failed:", bridgeErr.message);
+        setStatus("Neural Link disconnected. Please re-run the Setup Script.");
       }
 
       // 3. Final Failure - Show Diagnostics
+      if (!isDetecting) return; // Already navigated away
+
       let errorMsg = "No local brains found.";
 
       if (lastLocalError) {
@@ -710,8 +715,7 @@ function App() {
       setIsDetecting(false);
     } catch (e) {
       console.error("Critical detection failure", e);
-      setStatus("Neural link failure.");
-      setIsDetecting(false);
+      setStatus("Neural link failure. Is Ollama running?");
     } finally {
       setIsDetecting(false);
     }
