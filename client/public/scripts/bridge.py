@@ -41,6 +41,7 @@ def ollama_request(path, method="GET", data=None, timeout=10):
         resp = urllib.request.urlopen(req, timeout=timeout)
         return json.loads(resp.read().decode())
     except Exception as e:
+        # Silent for Ollama local checks
         return None
 
 def backend_request(path, method="GET", data=None, timeout=10):
@@ -50,12 +51,20 @@ def backend_request(path, method="GET", data=None, timeout=10):
         if data:
             body = json.dumps(data).encode()
             req = urllib.request.Request(url, data=body,
-                                        headers={"Content-Type": "application/json"})
+                                        headers={"Content-Type": "application/json", "User-Agent": "ChatLoom-Bridge/2.0"})
         else:
-            req = urllib.request.Request(url)
+            req = urllib.request.Request(url, headers={"User-Agent": "ChatLoom-Bridge/2.0"})
+        
         resp = urllib.request.urlopen(req, timeout=timeout)
         return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        print(f"  ❌ Backend rejected request: {e.code} {e.reason}")
+        return None
+    except urllib.error.URLError as e:
+        print(f"  ❌ Backend unreachable: {e.reason}")
+        return None
     except Exception as e:
+        print(f"  ❌ Connection error: {str(e)}")
         return None
 
 def get_local_models():
