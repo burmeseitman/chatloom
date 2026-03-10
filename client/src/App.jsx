@@ -673,6 +673,9 @@ function App() {
           setStep("setup");
           setIsDetecting(false);
           return;
+        } else if (res.data.status === "error") {
+          console.warn("Bridge responded with error:", res.data.message);
+          setStatus(`Link Weak: ${res.data.message}`);
         }
       } catch (bridgeErr) {
         console.error("Bridge link failed:", bridgeErr.message);

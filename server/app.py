@@ -144,15 +144,18 @@ def detect_llm():
             res = requests.get(f"{tunnel_url}/api/tags", timeout=15)
             if res.status_code == 200:
                 models = res.json().get('models', [])
-                if models:
-                    suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not (m.get('name') or "").lower().startswith("cloud")]
-                    return jsonify({
-                        "status": "success",
-                        "models": suitable,
-                        "origin": "Neural Link (Bridged)"
-                    })
+                suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not (m.get('name') or "").lower().startswith("cloud")]
+                return jsonify({
+                    "status": "success",
+                    "models": suitable,
+                    "all_found": [m['name'] for m in models],
+                    "origin": "Neural Link (Bridged)"
+                })
+            else:
+                return jsonify({"status": "error", "message": f"Bridge: Tunnel returned status {res.status_code}"}), 200
         except Exception as e:
             print(f"Tunnel bridge failed: {e}")
+            return jsonify({"status": "error", "message": f"Bridge: Tunnel request failed ({str(e)})"}), 200
 
     # Case 1: Requester is the Main Server PC (Local)
     if not client_ip or client_ip in ['127.0.0.1', 'localhost', '::1']:
@@ -172,20 +175,19 @@ def detect_llm():
         if response.status_code == 200:
             models = response.json().get('models', [])
             suitable = [{"name": m['name'], "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models]
-            print(f"Success: Found {len(suitable)} models at {client_ip}")
             return jsonify({
                 "status": "success",
                 "models": suitable,
                 "origin": "Remote Node"
             })
-    except Exception as e:
-        print(f"Failure: Could not reach {remote_url}. Error: {str(e)}")
+    except:
+        pass
     
     return jsonify({
         "status": "error",
-        "message": "No local brain node detected. Ensure Ollama is running and Tunnel is active.",
-        "models": [],
-        "detected_ip": client_ip
+        "message": "No local brain node detected. Registration not found or timeout.",
+        "session_id_checked": session_id,
+        "is_registered": session_id in active_tunnels if session_id else False
     }), 404
 
 @app.route('/api/generate-bridge', methods=['POST'])
