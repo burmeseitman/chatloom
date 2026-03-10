@@ -38,9 +38,21 @@ fi
 
 # 3. Restart Engine (Forcing New Core Config)
 echo "♻️  Resetting Brain Engine..."
+# Ruthless Kill: Port based kill to ensure 11434 is free
+if command -v lsof &> /dev/null; then
+    lsof -ti:11434 | xargs kill -9 2>/dev/null || true
+elif command -v fuser &> /dev/null; then
+    fuser -k 11434/tcp &> /dev/null || true
+fi
 pkill -9 "Ollama" 2>/dev/null || true
 pkill -9 "ollama" 2>/dev/null || true
-sleep 2
+sleep 3
+export OLLAMA_HOST="127.0.0.1:11434"
+export OLLAMA_ORIGINS="*"
+if [[ "$UNAME_S" == "Darwin" ]]; then
+    launchctl setenv OLLAMA_HOST "127.0.0.1:11434"
+    launchctl setenv OLLAMA_ORIGINS "*"
+fi
 nohup $OLLAMA_CMD serve >/tmp/ollama_engine.log 2>&1 &
 echo "🚀 Engine Active with Neural Access."
 
@@ -74,7 +86,7 @@ fi
 
 pkill -f "cloudflared tunnel" 2>/dev/null || true
 rm -f /tmp/chatloom_tunnel.log
-$CLOUDFLARED_BIN tunnel --url http://localhost:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
+$CLOUDFLARED_BIN tunnel --url http://127.0.0.1:11434 > /dev/null 2> /tmp/chatloom_tunnel.log &
 
 # 6. Session Registration
 echo "⏳ Syncing with ChatLoom Cloud..."
@@ -88,9 +100,9 @@ for i in {1..30}; do
         
         # Wait up to 45s (22 attempts) for the tunnel to actually respond
         for j in {1..22}; do
-            # Check local first
-            if ! curl -s "http://localhost:11434/api/tags" > /dev/null; then
-                 # Force start if service died
+            # Check local first (using 127.0.0.1 explicitly)
+            if ! curl -s "http://127.0.0.1:11434/api/tags" > /dev/null; then
+                 # Force start if service died or not responding
                  nohup $OLLAMA_CMD serve >/tmp/ollama_engine.log 2>&1 &
             fi
 
@@ -111,6 +123,7 @@ for i in {1..30}; do
             sleep 2
         done
         echo "❌ ERROR: Routing Timeout."
+        echo "💡 TIP: Try closing Ollama from your System Tray/Top Bar first, then re-run this script."
         echo "--- CLOUDFLARED ERROR LOGS ---"
         tail -n 10 /tmp/chatloom_tunnel.log
         echo "--- OLLAMA ENGINE LOGS ---"
