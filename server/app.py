@@ -71,10 +71,11 @@ def serve_setup_script(platform, session_id):
         with open(script_path, 'r', encoding='utf-8') as f:
             content = f.read()
             
-        # Try to resolve origin accurately whether requested directly or proxied
-        api_origin = request.headers.get("X-Forwarded-Host", request.host_url).rstrip("/")
-        if "http" not in api_origin:
-            api_origin = ("https://" if request.is_secure else "http://") + api_origin
+        # Try to resolve origin accurately
+        # Use X-Forwarded-Proto/Host if available (behind proxy)
+        proto = request.headers.get("X-Forwarded-Proto", "https" if request.is_secure else "http")
+        host = request.headers.get("X-Forwarded-Host", request.host)
+        api_origin = f"{proto}://{host}".rstrip("/")
             
         if platform == "unix":
             injection = f'\nexport CHATLOOM_SESSION="{session_id}"\nexport CHATLOOM_API="{api_origin}"\n'
@@ -95,13 +96,18 @@ def bridge_ping():
 
 @app.route('/scripts/bridge.py')
 def serve_bridge_script():
-    """Serve the bridge.py script with session injection."""
-    session_id = request.args.get('session_id', '')
-    script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client', 'public', 'scripts', 'bridge.py')
+    """Serve the bridge.py script from the public folder."""
+    # Robust path resolution relative to this file's location
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script_path = os.path.join(base_dir, 'client', 'public', 'scripts', 'bridge.py')
+    
     if not os.path.exists(script_path):
-        return "Bridge script not found", 404
-    with open(script_path, 'r') as f:
+        print(f"ERROR: Bridge script not found at {script_path}")
+        return "Bridge script not found on server", 404
+        
+    with open(script_path, 'r', encoding='utf-8') as f:
         content = f.read()
+        
     return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 @app.route('/api/bridge/heartbeat', methods=['POST'], strict_slashes=False)
