@@ -15,6 +15,12 @@
   --irc-join: #10b981;
   --irc-leave: #ef4444;
 
+  --tw-color-white: 255 255 255;
+  --tw-color-gray-300: 209 213 219;
+  --tw-color-gray-400: 156 163 175;
+  --tw-color-gray-500: 107 114 128;
+  --tw-color-gray-600: 75 85 99;
+
   font-family: "JetBrains Mono", "Fira Code", monospace;
   background-color: var(--irc-bg);
   color: var(--irc-text);
@@ -34,6 +40,12 @@ body {
   --irc-text: #2d3436; /* Charcoal text */
   --irc-dim: #636e72;
   --irc-system: #d63031;
+
+  --tw-color-white: 23 23 23;      /* #171717 */
+  --tw-color-gray-300: 75 85 99;    /* Tailwind dark gray-600 */
+  --tw-color-gray-400: 55 65 81;    /* Tailwind dark gray-700 */
+  --tw-color-gray-500: 107 114 128; /* Tailwind dark gray-500 */
+  --tw-color-gray-600: 156 163 175; /* Tailwind dark gray-400 */
 }
 
 body {
@@ -89,7 +101,7 @@ body {
 }
 
 .irc-message-line:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(var(--tw-color-white) / 0.03);
 }
 
 .irc-timestamp {
@@ -122,7 +134,7 @@ body {
 }
 
 .glass {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(var(--tw-color-white) / 0.02);
   backdrop-filter: blur(8px);
   border: 1px solid var(--irc-border);
 }

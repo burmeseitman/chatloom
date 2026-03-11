@@ -1086,22 +1086,22 @@ function App() {
               </div>
             </div>
             {/* Split Layout for Categories and Topics */}
-            <div className="flex flex-col xl:flex-row gap-6 lg:gap-8 w-full">
+            <div className="relative flex flex-col xl:flex-row justify-center w-full">
               
               {/* Categories Sidebar */}
-              <div className="xl:w-64 shrink-0 flex flex-col gap-3">
-                <div className="flex items-center gap-2 mb-2 px-2 md:px-4">
+              <div className="xl:absolute xl:left-0 xl:w-56 shrink-0 flex flex-col gap-3 mb-8 xl:mb-0">
+                <div className="flex items-center gap-2 mb-2 px-2 md:px-0">
                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Sphere Selection</span>
                 </div>
-                <div className="flex xl:flex-col gap-2 overflow-x-auto pb-4 xl:pb-0 px-2 no-scrollbar">
+                <div className="flex xl:flex-col gap-2 overflow-x-auto pb-4 xl:pb-0 px-2 xl:px-0 no-scrollbar">
                   {categories.map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
-                      className={`px-4 md:px-6 py-3 rounded-2xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap text-left flex items-center justify-between group ${
+                      className={`px-4 xl:px-5 py-3 rounded-2xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap text-left flex items-center justify-between group ${
                         selectedCategory === cat
-                          ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40 border border-blue-400/30"
+                          ? "bg-blue-600 text-zinc-50 shadow-lg shadow-blue-900/40 border border-blue-400/30"
                           : "bg-white/5 text-gray-500 hover:bg-[var(--irc-border)] border border-transparent"
                       }`}
                     >
@@ -1112,9 +1112,9 @@ function App() {
                 </div>
               </div>
 
-              {/* Topics Grid */}
-              <div className="flex-1">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+              {/* Topics Grid - Centered & aligned with FAQ (max-w-4xl) */}
+              <div className="w-full max-w-4xl">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                   {isTopicsLoading
                     ? Array.from({ length: 12 }).map((_, i) => (
                         <div
@@ -1765,7 +1765,7 @@ function App() {
                 </button>
                 <button
                   onClick={confirmQuit}
-                  className="flex-1 py-4 px-4 rounded-xl bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-bold transition-all shadow-lg text-sm"
+                  className="flex-1 py-4 px-4 rounded-xl bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-zinc-50 font-bold transition-all shadow-lg text-sm"
                 >
                   Confirm Quit
                 </button>
