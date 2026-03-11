@@ -404,44 +404,51 @@ def check_nickname():
 # Global state for ACTIVE connections only
 active_rooms = {}
 
+@app.route('/api/categories', methods=['GET'])
+def get_categories():
+    conn = get_db_connection()
+    rows = conn.execute('SELECT DISTINCT category FROM topics ORDER BY category').fetchall()
+    conn.close()
+    return jsonify([r['category'] for r in rows])
+
 @app.route('/api/topics', methods=['GET'])
 def get_topics():
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 12))
     search_query = request.args.get('query', '').strip()
+    category = request.args.get('category', 'All').strip()
     offset = (page - 1) * limit
     
-    print(f"--- Topics API Call ---")
-    print(f"Page: {page}, Limit: {limit}, Query: '{search_query}'")
-    
     conn = get_db_connection()
+    query = 'SELECT name, category FROM topics WHERE 1=1'
+    params = []
+
     if search_query:
-        # Case-insensitive search filter
-        search_pattern = f'%{search_query.lower()}%'
-        topics_rows = conn.execute(
-            'SELECT name FROM topics WHERE LOWER(name) LIKE ? LIMIT ? OFFSET ?',
-            (search_pattern, limit, offset)
-        ).fetchall()
-        total_count = conn.execute(
-            'SELECT COUNT(*) FROM topics WHERE LOWER(name) LIKE ?',
-            (search_pattern,)
-        ).fetchone()[0]
-        print(f"Search Result: Found {total_count} items")
-    else:
-        # Default view
-        topics_rows = conn.execute('SELECT name FROM topics LIMIT ? OFFSET ?', (limit, offset)).fetchall()
-        total_count = conn.execute('SELECT COUNT(*) FROM topics').fetchone()[0]
-        print(f"Default View: {total_count} items total")
+        query += ' AND LOWER(name) LIKE ?'
+        params.append(f'%{search_query.lower()}%')
+    
+    if category and category != 'All':
+        query += ' AND category = ?'
+        params.append(category)
+
+    # Count total
+    count_query = query.replace('SELECT name, category', 'SELECT COUNT(*)')
+    total_count = conn.execute(count_query, params).fetchone()[0]
+
+    # Get results
+    query += ' LIMIT ? OFFSET ?'
+    params.extend([limit, offset])
+    topics_rows = conn.execute(query, params).fetchall()
     conn.close()
     
     results = []
     for row in topics_rows:
         topic_name = row['name']
-        # Get active count from memory state
         room_info = active_rooms.get(topic_name, {})
         active_count = len(room_info.get('active_llms', {}))
         results.append({
             "name": topic_name,
+            "category": row['category'],
             "active_count": active_count
         })
         

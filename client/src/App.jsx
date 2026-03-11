@@ -184,6 +184,8 @@ function App() {
   const [inputValue, setInputValue] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeParticipants, setActiveParticipants] = useState([]);
+  const [categories, setCategories] = useState(["All"]);
+  const [selectedCategory, setSelectedCategory] = useState("All");
   const [status, setStatus] = useState("Exploring topics...");
   const [bridgeActive, setBridgeActive] = useState(false);
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -351,26 +353,22 @@ function App() {
   useEffect(() => {
     if (step !== "topics") return;
 
-    // Use current search query if it meets the criteria, otherwise empty
     const activeQuery = searchQuery.length >= 2 ? searchQuery : "";
 
-    // If typing, we wait. If not typing or just mounted, we fetch.
     const timer = setTimeout(
       () => {
-        fetchTopics(page, activeQuery);
+        fetchTopics(page, activeQuery, selectedCategory);
       },
       searchQuery.length > 0 ? 400 : 0,
     );
 
     return () => clearTimeout(timer);
-  }, [step, page, searchQuery]);
+  }, [step, page, searchQuery, selectedCategory]);
 
-  // Reset page when search query changes significantly
+  // Reset page when research query or category changes
   useEffect(() => {
-    if (searchQuery.length >= 2 || searchQuery.length === 0) {
-      setPage(1);
-    }
-  }, [searchQuery]);
+    setPage(1);
+  }, [searchQuery, selectedCategory]);
 
   useEffect(() => {
     if (step === "setup") {
@@ -544,12 +542,24 @@ function App() {
     return <Hash size={20} />;
   };
 
-  const fetchTopics = async (targetPage = 1, query = "") => {
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/categories`);
+        setCategories(["All", ...res.data]);
+      } catch (e) {
+        console.error("Failed to fetch categories", e);
+      }
+    };
+    fetchCategories();
+  }, []);
+
+  const fetchTopics = async (targetPage = 1, query = "", category = "All") => {
     setIsTopicsLoading(true);
     try {
       const startTime = Date.now();
       const res = await axios.get(
-        `${BACKEND_URL}/api/topics?page=${targetPage}&limit=12&query=${encodeURIComponent(query)}`,
+        `${BACKEND_URL}/api/topics?page=${targetPage}&limit=12&query=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}`,
       );
       const endTime = Date.now();
 
@@ -1075,48 +1085,87 @@ function App() {
                 )}
               </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {isTopicsLoading
-                ? Array.from({ length: 12 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="glass p-6 rounded-2xl border border-white/5 animate-pulse min-h-[160px]"
+            {/* Split Layout for Categories and Topics */}
+            <div className="flex flex-col xl:flex-row gap-6 lg:gap-8 w-full">
+              
+              {/* Categories Sidebar */}
+              <div className="xl:w-64 shrink-0 flex flex-col gap-3">
+                <div className="flex items-center gap-2 mb-2 px-2 md:px-4">
+                   <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
+                   <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Sphere Selection</span>
+                </div>
+                <div className="flex xl:flex-col gap-2 overflow-x-auto pb-4 xl:pb-0 px-2 no-scrollbar">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setSelectedCategory(cat)}
+                      className={`px-4 md:px-6 py-3 rounded-2xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap text-left flex items-center justify-between group ${
+                        selectedCategory === cat
+                          ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40 border border-blue-400/30"
+                          : "bg-white/5 text-gray-500 hover:bg-[var(--irc-border)] border border-transparent"
+                      }`}
                     >
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="w-10 h-10 bg-white/5 rounded-lg" />
-                        <div className="w-12 h-6 bg-white/5 rounded-full" />
-                      </div>
-                      <div className="h-5 bg-white/5 rounded-md w-3/4 mb-2" />
-                      <div className="h-5 bg-white/5 rounded-md w-1/2" />
-                    </div>
-                  ))
-                : topics.map((t, idx) => (
-                    <motion.div
-                      key={t.name}
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: idx * 0.03, duration: 0.2 }}
-                      onClick={() => handleTopicClick(t.name)}
-                      className="glass p-6 rounded-2xl border border-white/5 hover:border-blue-500/50 cursor-pointer transition-all hover:translate-y-[-4px] group min-h-[160px] flex flex-col justify-between"
-                    >
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="p-2.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl group-hover:from-purple-500/30 group-hover:to-pink-500/30 transition-all">
-                          <div className="text-cyan-400 group-hover:text-purple-300">
-                            {getTopicIcon(t.name)}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-white/5 rounded-full border border-white/5">
-                          <Users size={12} className="text-gray-400" />
-                          <span className="text-[10px] font-bold text-gray-300">
-                            {t.active_count}
-                          </span>
-                        </div>
-                      </div>
-                      <h3 className="text-lg font-bold leading-tight group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-purple-200">
-                        {t.name}
-                      </h3>
-                    </motion.div>
+                      <span>{cat}</span>
+                      <div className={`w-1 h-1 rounded-full transition-all ${selectedCategory === cat ? "bg-white animate-pulse" : "bg-white/10 group-hover:bg-blue-400"}`} />
+                    </button>
                   ))}
+                </div>
+              </div>
+
+              {/* Topics Grid */}
+              <div className="flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
+                  {isTopicsLoading
+                    ? Array.from({ length: 12 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="glass p-6 rounded-2xl border border-[var(--irc-border)] animate-pulse min-h-[160px]"
+                        >
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="w-10 h-10 bg-[var(--irc-border)] rounded-lg" />
+                            <div className="w-12 h-6 bg-[var(--irc-border)] rounded-full" />
+                          </div>
+                          <div className="h-5 bg-[var(--irc-border)] rounded-md w-3/4 mb-2" />
+                          <div className="h-5 bg-[var(--irc-border)] rounded-md w-1/2" />
+                        </div>
+                      ))
+                    : topics.map((t, idx) => (
+                        <motion.div
+                          key={t.name}
+                          initial={{ opacity: 0, scale: 0.98 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: idx * 0.03, duration: 0.2 }}
+                          onClick={() => handleTopicClick(t.name)}
+                          className="glass p-6 rounded-2xl border border-[var(--irc-border)] hover:border-blue-500/50 cursor-pointer transition-all hover:translate-y-[-4px] group min-h-[160px] flex flex-col justify-between relative overflow-hidden"
+                        >
+                          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500/0 to-transparent group-hover:via-blue-500/50 transition-all" />
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="p-2.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl group-hover:from-purple-500/30 group-hover:to-pink-500/30 transition-all">
+                              <div className="text-cyan-400 group-hover:text-purple-300">
+                                {getTopicIcon(t.name)}
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end gap-2">
+                              {t.category && t.category !== "General" && (
+                                <span className="text-[8px] font-black uppercase tracking-widest text-blue-400/50 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                                  {t.category}
+                                </span>
+                              )}
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[var(--irc-border)] rounded-full border border-[var(--irc-border)]">
+                                <Users size={12} className="text-gray-400" />
+                                <span className="text-[10px] font-bold text-gray-500 group-hover:text-gray-300 transition-colors">
+                                  {t.active_count}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <h3 className="text-lg font-bold leading-tight text-[var(--irc-text)] group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-purple-200">
+                            {t.name}
+                          </h3>
+                        </motion.div>
+                      ))}
+                </div>
+              </div>
             </div>
           </div>
 
