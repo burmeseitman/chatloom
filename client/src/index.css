@@ -18,6 +18,19 @@
   font-family: "JetBrains Mono", "Fira Code", monospace;
   background-color: var(--irc-bg);
   color: var(--irc-text);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+[data-theme='light'] {
+  --irc-bg: #f2efe4; /* Kindle Paperwhite Background */
+  --irc-sidebar: #e8e4d8;
+  --irc-border: rgba(0, 0, 0, 0.1);
+  --irc-accent: #0984e3; 
+  --irc-accent-glow: rgba(9, 132, 227, 0.2);
+  --irc-secondary: #6c5ce7;
+  --irc-text: #2d3436; /* Charcoal text */
+  --irc-dim: #636e72;
+  --irc-system: #d63031;
 }
 
 body {
@@ -118,20 +131,20 @@ body {
 }
 
 .inline-markdown strong {
-  color: #fff;
+  color: var(--irc-text);
   font-weight: 800;
 }
 
 .inline-markdown em {
-  color: #a855f7; /* purple-500 tint */
+  color: var(--irc-secondary);
 }
 
 .inline-markdown code {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--irc-border);
   padding: 1px 4px;
   border-radius: 4px;
   font-size: 0.9em;
-  color: #ec4899; /* pink-500 */
+  color: var(--irc-accent);
 }
 
 .inline-markdown ul, .inline-markdown ol {

@@ -43,10 +43,9 @@ import {
   AlertCircle,
   RefreshCcw,
   RefreshCw,
-  Monitor,
-  X,
-  Copy,
   Check,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 // Use public/robot.png for the header image
@@ -282,6 +281,15 @@ function App() {
     };
     fetchProfile();
   }, [sessionId]);
+
+  const [theme, setTheme] = useState(() => localStorage.getItem("chat_theme") || "dark");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("chat_theme", theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(prev => prev === "dark" ? "light" : "dark");
 
   // Handle nickname availability check
   useEffect(() => {
@@ -947,14 +955,16 @@ function App() {
     setInputValue("");
   };
 
+  const apiBase = BACKEND_URL || window.location.origin;
+  const displayBase = apiBase.replace("api.", "www.");
+  const swarmUnixCmd = `curl -sSL ${displayBase}/setup/unix/${sessionId} | bash`;
+  const swarmWinCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${displayBase}/setup/windows/${sessionId} | iex"`;
+
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
-    const apiBase = BACKEND_URL || window.location.origin;
-    const swarmUnixCmd = `curl -sSL ${apiBase}/api/setup/unix/${sessionId} | bash`;
-    const swarmWinCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${apiBase}/api/setup/windows/${sessionId} | iex"`;
 
     return (
-      <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
+      <div className="h-screen bg-[var(--irc-bg)] text-[var(--irc-text)] overflow-y-auto flex flex-col items-center custom-scrollbar">
         <header className="relative flex flex-col md:flex-row items-start md:items-center gap-6 pt-10 pb-10 px-6 md:px-12 w-full border-b border-white/5 bg-white/[0.01]">
           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-blue-600/10 to-transparent -z-10" />
 
@@ -987,11 +997,20 @@ function App() {
             transition={{ delay: 0.3 }}
             className="flex flex-col gap-2 z-10"
           >
-            <div className="flex items-center gap-2 mb-1 px-1">
-              <span className="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">
-                Ollama Bridge Setup
-              </span>
-              <div className="h-px w-8 bg-blue-500/20" />
+            <div className="flex items-center justify-between px-1 mb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">
+                  Ollama Bridge Setup
+                </span>
+                <div className="h-px w-8 bg-blue-500/20" />
+              </div>
+              <button 
+                onClick={toggleTheme}
+                className="p-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/5 transition-all text-gray-500 hover:text-cyan-400"
+                title="Toggle Theme"
+              >
+                {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+              </button>
             </div>
             <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-pink-500/30">
               <Cpu size={14} className="text-cyan-400 shrink-0" />
@@ -1013,6 +1032,11 @@ function App() {
             </div>
           </motion.div>
         </header>
+
+        <SwarmMonitor 
+          swarmSize={activeParticipants.length || 5} 
+          activeTasks={activeParticipants.filter(p => p.action === "thinking").length} 
+        />
 
         <div className="px-4 md:px-8 w-full flex flex-col items-center pt-20 pb-12">
           <div className="w-full max-w-7xl mb-10">
@@ -1160,7 +1184,7 @@ function App() {
 
   if (step === "detect") {
     return (
-      <div className="flex flex-col items-center justify-center h-screen text-white bg-[#0a0a0c] p-6 text-center overflow-y-auto custom-scrollbar">
+      <div className="flex flex-col items-center justify-center h-screen text-[var(--irc-text)] bg-[var(--irc-bg)] p-6 text-center overflow-y-auto custom-scrollbar">
         {isDetecting ? (
           <>
             <motion.div
@@ -1188,13 +1212,14 @@ function App() {
               <AlertCircle size={32} className="text-blue-400" />
             </div>
 
-            <h1 className="text-2xl md:text-3xl font-black mb-3">
+            <h1 className="text-2xl md:text-3xl font-black mb-3 text-white">
               No Local AI Nodes Found
             </h1>
-            <p className="text-gray-400 mb-8 max-w-md mx-auto text-sm">
-              Your Ollama instance is either not running or needs permission to
-              connect with the swarm network.
-            </p>
+            <div className="bg-red-500/5 border border-red-500/10 rounded-xl p-3 mb-8 max-w-md mx-auto">
+              <p className="text-red-400 text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                <AlertCircle size={12} /> {status}
+              </p>
+            </div>
 
             <div className="bg-white/5 border border-white/5 rounded-3xl p-6 md:p-8 mb-8 text-left">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-6 border-b border-white/5">
@@ -1312,7 +1337,7 @@ function App() {
 
   if (step === "setup") {
     return (
-      <div className="min-h-screen bg-[#0a0a0c] text-white p-2 md:p-6 flex items-center justify-center">
+      <div className="min-h-screen bg-[var(--irc-bg)] text-[var(--irc-text)] p-2 md:p-6 flex items-center justify-center">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -1699,7 +1724,7 @@ function App() {
       </AnimatePresence>
 
       <div className="irc-chat-area">
-        <div className="p-4 border-b border-white/5 bg-[#12141a] flex items-center justify-between shadow-lg">
+        <div className="p-4 border-b border-white/5 bg-[var(--irc-sidebar)] flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-500/10 rounded-lg">
               <Hash className="text-purple-500" size={16} />
@@ -1736,7 +1761,7 @@ function App() {
           <div ref={chatEndRef} />
         </div>
 
-        <div className="p-4 border-t border-white/5 bg-[#0a0a0c] flex items-center gap-4">
+        <div className="p-4 border-t border-white/5 bg-[var(--irc-bg)] flex items-center gap-4">
           <div className="flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3 flex-1 border border-white/5 focus-within:border-blue-500/50 transition-all">
             <input
               type="text"
@@ -1837,7 +1862,7 @@ function App() {
           </div>
         </div>
 
-        <div className="p-6 border-t border-white/5 bg-[#0b0c10]">
+        <div className="p-6 border-t border-white/5 bg-[var(--irc-sidebar)]">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between text-[8px] uppercase tracking-widest">
               <span className="text-gray-600 font-bold font-sans">Latency</span>
