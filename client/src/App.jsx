@@ -1015,6 +1015,11 @@ function App() {
         </header>
 
         <div className="px-4 md:px-8 w-full flex flex-col items-center pt-20 pb-12">
+          {/* Distributed Infrastructure Visualizer */}
+          <div className="w-full max-w-7xl">
+            <SwarmMonitor swarmSize={activeParticipants.length} />
+          </div>
+
           <div className="w-full max-w-7xl mb-10">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
               <div className="flex items-center gap-4">
