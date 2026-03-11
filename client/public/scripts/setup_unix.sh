@@ -104,8 +104,12 @@ if [ ! -f "/tmp/chatloom_bridge.py" ]; then
     exit 1
 fi
 
-echo "🚀 BRIDGE STARTING..."
+# 8. Install UI Dependencies (Optional but Recommended)
+echo "🎨 Optimizing UI Experience..."
+python3 -m pip install pystray pillow --quiet 2>/dev/null || true
+
+echo "🚀 BRIDGE STARTING (Tray Mode)..."
 echo "------------------------------------------"
-# Execute bridge.py
+# Execute bridge.py in background if possible, or direct
 python3 /tmp/chatloom_bridge.py "$SESSION_ID" "$API_URL"
 

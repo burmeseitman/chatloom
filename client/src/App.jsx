@@ -183,9 +183,18 @@ function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeParticipants, setActiveParticipants] = useState([]);
   const [status, setStatus] = useState("Exploring topics...");
+  const [bridgeActive, setBridgeActive] = useState(false);
   const [showQuitModal, setShowQuitModal] = useState(false);
+
+  const confirmQuit = () => {
+    setShowQuitModal(false);
+    socket.emit("leave", { room_id: selectedTopic, name });
+    setStep("topics");
+    localStorage.removeItem("chat_step");
+  };
+
   const [isDetecting, setIsDetecting] = useState(false);
-  const isDetectingRef = useRef(false); // ref version for use inside closures/effects
+  const isDetectingRef = useRef(false);
   const [personas, setPersonas] = useState([]);
   const [selectedPersona, setSelectedPersona] = useState(null);
   const [showPersonaForm, setShowPersonaForm] = useState(false);
@@ -214,8 +223,6 @@ function App() {
     }
     return id;
   });
-
-  const [bridgeActive, setBridgeActive] = useState(false);
 
   // Bridge Status Polling — check if user's bridge.py is active
   useEffect(() => {

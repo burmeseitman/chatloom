@@ -95,8 +95,19 @@ if (!(Test-Path $bridgePath)) {
     Exit 1
 }
 
-Write-Host "🚀 BRIDGE STARTING..." -ForegroundColor Green
+# 8. Install UI Dependencies
+Write-Host "🎨 Optimizing UI Experience..." -ForegroundColor Gray
+& $pyCmd -m pip install pystray pillow --quiet 2>$null
+
+Write-Host "🚀 BRIDGE STARTING (Tray Mode)..." -ForegroundColor Green
 Write-Host "------------------------------------------"
-# Execute bridge.py
-& $pyCmd $bridgePath "$SESSION_ID" "$API_URL"
+# Execute bridge.py using pythonw (if available) to hide terminal
+$pywCmd = (Get-Command pythonw -ErrorAction SilentlyContinue).Source
+if ($pywCmd) {
+    Start-Process $pywCmd -ArgumentList "$bridgePath `"$SESSION_ID`" `"$API_URL`""
+    Write-Host "✅ Node is now running in your notification bar!" -ForegroundColor Green
+    Start-Sleep -Seconds 2
+} else {
+    & $pyCmd $bridgePath "$SESSION_ID" "$API_URL"
+}
 
