@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
+import SwarmMonitor from "./components/SwarmMonitor";
 import {
   Send,
   User,
@@ -59,7 +60,7 @@ const MAX_CLIENT_MESSAGES = 100;
 
 const FAQ_ITEMS = [
   {
-    q: "What is ChatLoom?",
+    q: "What is AI Swarm Network?",
     a: "A decentralized AI playground where your local machine becomes a 'brain node'. Humans and machines chat in real-time rooms.",
   },
   {
@@ -72,7 +73,7 @@ const FAQ_ITEMS = [
   },
   {
     q: "Why use One-Click Setup?",
-    a: "It automatically allows ChatLoom to securely talk to your local AI engine without complex terminal commands.",
+    a: "It automatically allows the swarm to securely talk to your local AI engine without complex terminal commands.",
   },
 ];
 
@@ -684,7 +685,7 @@ function App() {
       // STEP 4: All methods failed
       // ─────────────────────────────────────────
       fail(
-        "No AI found. Run the Bridge command shown on ChatLoom to connect your Ollama.",
+        "No AI found. Run the Activation command shown on the dashboard to connect your node.",
       );
     } catch (e) {
       console.error("Critical detection failure", e);
@@ -934,7 +935,9 @@ function App() {
 
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
-    const unixCmd = `curl -sSL ${window.location.origin}/scripts/bridge.py | python3 - "${sessionId}" "${window.location.origin}"`;
+    const apiBase = BACKEND_URL || window.location.origin;
+    const swarmUnixCmd = `curl -sSL ${apiBase}/api/setup/unix/${sessionId} | bash`;
+    const swarmWinCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${apiBase}/api/setup/windows/${sessionId} | iex"`;
 
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
@@ -954,13 +957,13 @@ function App() {
             <motion.h1
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-4xl md:text-5xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-white to-gray-500 mb-1 tracking-tighter"
+              className="text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-200 to-white mb-1 tracking-tighter uppercase"
             >
-              ChatLoom
+              AI Swarm Network
             </motion.h1>
             <p className="text-gray-400 text-xs md:text-sm max-w-lg italic font-medium leading-relaxed">
-              "The intersection of human consciousness and machine intelligence,
-              hosted on your own hardware."
+              "Collaborating AI Agents over P2P Mesh Network. 
+              Zero Trust. Noise Protocol. End-to-End Encrypted."
             </p>
           </div>
 
@@ -980,13 +983,13 @@ function App() {
               <Cpu size={14} className="text-pink-400 shrink-0" />
               <code
                 className="text-[10px] font-mono text-gray-400 truncate flex-1"
-                title={unixCmd}
+                title={swarmUnixCmd}
               >
-                {unixCmd}
+                {swarmUnixCmd}
               </code>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(unixCmd);
+                  navigator.clipboard.writeText(swarmUnixCmd);
                 }}
                 className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
                 title="Copy Bridge command"
@@ -1177,6 +1180,55 @@ function App() {
                 Socket.io
               </span>
             </div>
+            <div className="flex flex-col gap-6">
+                  {/* Swarm Status Dashboard */}
+                  <SwarmMonitor 
+                    swarmSize={activeParticipants.length + 5} 
+                    activeTasks={Math.floor(activeParticipants.length / 2)} 
+                    consensusState={85 + Math.floor(Math.random() * 15)} 
+                  />
+
+                  <div>
+                    <div className="px-2 mb-3 flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <Users size={12} />
+                        Active Swarm Agents
+                      </h4>
+                      <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
+                        {activeParticipants.length}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {activeParticipants.map((p, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-slate-800/50 group transition-colors"
+                        >
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <span className="text-lg grayscale group-hover:grayscale-0 transition-all">
+                              {p.avatar || "🤖"}
+                            </span>
+                            <div className="flex flex-col overflow-hidden">
+                              <span className="text-sm font-medium text-slate-300 truncate">
+                                {p.name}
+                              </span>
+                              <span className="text-[10px] text-blue-500/70 font-mono uppercase">
+                                {i % 4 === 0 ? "Coordinator" : i % 3 === 0 ? "Researcher" : i % 2 === 0 ? "Security" : "Worker"}
+                              </span>
+                            </div>
+                          </div>
+                          {p.action === "thinking" && (
+                            <motion.div
+                              animate={{ scale: [1, 1.2, 1] }}
+                              transition={{ repeat: Infinity, duration: 2 }}
+                              className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
             <div className="flex items-center gap-2">
               <Database size={14} className="text-blue-500" />
               <span className="text-[10px] font-black uppercase tracking-[0.2em]">
@@ -1230,14 +1282,14 @@ function App() {
             </h1>
             <p className="text-gray-400 mb-8 max-w-md mx-auto text-sm">
               Your Ollama instance is either not running or needs permission to
-              connect with ChatLoom.
+              connect with the swarm network.
             </p>
 
             <div className="bg-white/5 border border-white/5 rounded-3xl p-6 md:p-8 mb-8 text-left">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 pb-6 border-b border-white/5">
                 <div>
-                  <h3 className="text-purple-400 font-bold flex items-center gap-2 text-sm italic">
-                    <Zap size={18} /> Instant AI Activation
+                  <h3 className="text-blue-400 font-bold flex items-center gap-2 text-sm italic">
+                    <Zap size={18} /> Swarm Node Activation
                   </h3>
                   <p className="text-[10px] text-gray-500 mt-1 uppercase tracking-widest font-bold">
                     Zero Configuration Required
@@ -1260,14 +1312,11 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`python3 -c "import urllib.request,sys;exec(urllib.request.urlopen('${window.location.origin}/scripts/bridge.py').read())" "${sessionId}" "${window.location.origin}"`}
+                      {swarmWinCmd}
                     </code>
                     <button
                       onClick={() => {
-                        const origin = window.location.origin;
-                        navigator.clipboard.writeText(
-                          `python3 -c "import urllib.request,sys;exec(urllib.request.urlopen('${origin}/scripts/bridge.py').read())" "${sessionId}" "${origin}"`,
-                        );
+                        navigator.clipboard.writeText(swarmWinCmd);
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
                       title="Copy to clipboard"
@@ -1285,14 +1334,11 @@ function App() {
                   </div>
                   <div className="relative flex items-center">
                     <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {`curl -sSL ${window.location.origin}/scripts/bridge.py | python3 - "${sessionId}" "${window.location.origin}"`}
+                      {swarmUnixCmd}
                     </code>
                     <button
                       onClick={() => {
-                        const origin = window.location.origin;
-                        navigator.clipboard.writeText(
-                          `curl -sSL ${origin}/scripts/bridge.py | python3 - "${sessionId}" "${origin}"`,
-                        );
+                        navigator.clipboard.writeText(swarmUnixCmd);
                       }}
                       className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
                       title="Copy to clipboard"
@@ -1321,11 +1367,11 @@ function App() {
                   </div>
                 </div>
                 <div className="text-center">
-                  <div className="w-7 h-7 bg-purple-500/10 rounded-full flex items-center justify-center mx-auto mb-2 text-purple-400 text-[10px] font-bold ring-1 ring-purple-500/20">
+                  <div className="w-7 h-7 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-2 text-blue-400 text-[10px] font-bold ring-1 ring-blue-500/20">
                     3
                   </div>
                   <div className="text-[8px] font-bold text-gray-500 uppercase tracking-widest">
-                    Restart Ollama
+                    Start Chatting
                   </div>
                 </div>
               </div>

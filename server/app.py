@@ -22,28 +22,39 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
 
-active_tunnels = {}
+# Swarm State
 bridge_sessions = {}   # {session_id: {"models": [...], "last_seen": timestamp}}
 pending_tasks = {}     # {session_id: [{task_id, model, prompt, ...}]}
 task_results = {}      # {task_id: {"status", "response", ...}}
 
-@app.route('/api/tunnel', methods=['POST'])
-def register_tunnel():
-    data = request.json
-    session_id = data.get('session_id')
-    tunnel_url = data.get('tunnel_url')
-    if session_id and tunnel_url:
-        active_tunnels[session_id] = tunnel_url
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 400
+# === DECENTRALIZED SWARM STATE ===
+swarm_peers = {}       # {peer_id: {"addr": ..., "type": ..., "last_seen": ...}}
+knowledge_map = {}     # {key: value} for shared knowledge
+bootstrap_nodes = [
+    "https://chatloom.online" # Self as primary bootstrap
+]
 
-@app.route('/api/tunnel/<session_id>', methods=['GET'])
-def get_tunnel(session_id):
-    url = active_tunnels.get(session_id)
-    if url:
-        return jsonify({"tunnel_url": url})
-    # Return 200 instead of 404 to keep the console clean during setup polling
-    return jsonify({"tunnel_url": None}), 200
+@app.route('/api/swarm/bootstrap', methods=['GET'])
+def get_bootstrap_nodes():
+    """Return list of active peers to join the mesh network."""
+    return jsonify({
+        "nodes": bootstrap_nodes,
+        "active_peers": list(swarm_peers.keys())[:10]
+    })
+
+@app.route('/api/swarm/announce', methods=['POST'])
+def announce_peer():
+    """Register a new peer in the swarm."""
+    data = request.json
+    peer_id = data.get('peer_id')
+    if peer_id:
+        swarm_peers[peer_id] = {
+            "addr": request.remote_addr,
+            "agent_type": data.get('agent_type', 'WORKER'),
+            "last_seen": time.time()
+        }
+        return jsonify({"status": "joined", "swarm_size": len(swarm_peers)})
+    return jsonify({"status": "error"}), 400
 
 @app.route('/api/setup/<platform>/<session_id>', methods=['GET'])
 def serve_setup_script(platform, session_id):
@@ -227,22 +238,7 @@ def detect_llm():
         elif age >= 15:
             print(f"Bridge STALE: last seen {age:.0f}s ago")
 
-    # === PRIORITY 2: Check Tunnel (legacy) ===
-    if session_id and session_id in active_tunnels:
-        tunnel_url = active_tunnels[session_id].rstrip('/')
-        print(f"Trying Tunnel: {tunnel_url}")
-        try:
-            res = requests.get(f"{tunnel_url}/api/tags", timeout=5)
-            if res.status_code == 200:
-                models = res.json().get('models', [])
-                suitable = [{"name": m.get('name', 'unknown'), "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')} for m in models if not (m.get('name', '') or '').lower().startswith('cloud')]
-                if suitable:
-                    print(f"Tunnel SUCCESS: {len(suitable)} models")
-                    return jsonify({"status": "success", "models": suitable, "origin": "Your PC (Tunnel)"})
-        except:
-            print("Tunnel unreachable, continuing...")
-
-    # === PRIORITY 3: Local Ollama on server ===
+    # === PRIORITY 2: Local Ollama on server ===
     print("Trying local Ollama...")
     models = get_ollama_models()
     if models:
@@ -298,8 +294,6 @@ def generate_bridge():
 
     # === TRY 2: Direct Ollama (if on same machine as backend) ===
     target_url = OLLAMA_URL
-    if session_id and session_id in active_tunnels:
-        target_url = active_tunnels[session_id].rstrip('/')
 
     try:
         response = requests.post(
@@ -754,10 +748,9 @@ def handle_leave(data=None):
             
             # Autonomously request the client to kill its local tunnel for security (Kill Switch)
             session_id = llm_info.get('session_id')
-            if session_id and session_id in active_tunnels:
+            if session_id:
                 # Tell the specific client browser to execute the kill switch
                 socketio.emit('kill_tunnel', {}, to=request.sid)
-                del active_tunnels[session_id]
 
 @socketio.on('disconnect')
 def handle_disconnect():

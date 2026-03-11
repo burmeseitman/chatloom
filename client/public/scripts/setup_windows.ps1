@@ -1,12 +1,12 @@
 # ==========================================
-#   ChatLoom - Neural Link Setup (Win)
+#   AI Swarm Network - Node Setup (Win)
 # ==========================================
 
 $SESSION_ID = if ($args[0]) { $args[0] } else { $env:CHATLOOM_SESSION }
 $API_URL = if ($args[1]) { $args[1] } else { if ($env:CHATLOOM_API) { $env:CHATLOOM_API } else { "https://chatloom.online" } }
 
 Write-Host "------------------------------------------" -ForegroundColor Cyan
-Write-Host " 🐉 Initializing ChatLoom Neural Link..." -ForegroundColor Cyan
+Write-Host " 🐉 Initializing AI Swarm Node..." -ForegroundColor Cyan
 Write-Host "------------------------------------------" -ForegroundColor Cyan
 
 # 1. Check for Ollama
@@ -72,8 +72,8 @@ if ([string]::IsNullOrWhiteSpace($models)) {
     Write-Host "✅ Knowledge Base ready." -ForegroundColor Green
 }
 
-# 7. Launch Neural Bridge
-Write-Host "🐉 Launching Neural Bridge..." -ForegroundColor Cyan
+# 7. Launch Swarm Node (Neural Bridge)
+Write-Host "🐉 Launching AI Swarm Node..." -ForegroundColor Cyan
 
 # Check for Python
 if (!(Get-Command python -ErrorAction SilentlyContinue) -and !(Get-Command python3 -ErrorAction SilentlyContinue)) {

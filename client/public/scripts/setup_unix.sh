@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==========================================
-#   ChatLoom - Neural Link Setup (Unix/Mac)
+#   AI Swarm Network - Node Setup (Unix/Mac)
 # ==========================================
 
 SESSION_ID=${1:-$CHATLOOM_SESSION}
@@ -9,7 +9,7 @@ UNAME_S=$(uname -s)
 UNAME_M=$(uname -m)
 
 echo "------------------------------------------"
-echo " 🐉 Initializing ChatLoom Neural Link..."
+echo " 🐉 Initializing AI Swarm Node..."
 echo "------------------------------------------"
 
 # 1. Check for Ollama
@@ -90,8 +90,8 @@ else
     echo "$MODELS"
 fi
 
-# 7. Launch Neural Bridge
-echo "🐉 Launching Neural Bridge..."
+# 7. Launch Swarm Node (Neural Bridge)
+echo "🐉 Launching AI Swarm Node..."
 pkill -f "bridge.py" 2>/dev/null || true
 sleep 1
 
