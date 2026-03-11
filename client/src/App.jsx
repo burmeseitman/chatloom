@@ -1154,103 +1154,6 @@ function App() {
           </div>
         </div>
 
-        {/* Powered By Section */}
-        <div className="w-full max-w-4xl px-4 mt-12 mb-8">
-          <div className="flex items-center gap-4 mb-8">
-            <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/5" />
-            <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-gray-600">
-              Distributed Infrastructure
-            </h2>
-            <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/5" />
-          </div>
-          <div className="mt-4 flex flex-wrap justify-center gap-x-8 gap-y-6 items-center grayscale opacity-40 hover:grayscale-0 hover:opacity-100 transition-all duration-700">
-            <div className="flex items-center gap-2">
-              <Rocket size={14} className="text-blue-400" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-                Vite
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Globe size={14} className="text-pink-400" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-                React
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Shield size={14} className="text-teal-400" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-                Tailwind
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Terminal size={14} className="text-yellow-400" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-                Python
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Zap size={14} className="text-orange-400" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-                Socket.io
-              </span>
-            </div>
-            <div className="flex flex-col gap-6">
-
-                  <div>
-                    <div className="px-2 mb-3 flex items-center justify-between">
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                        <Users size={12} />
-                        Active Swarm Agents
-                      </h4>
-                      <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
-                        {activeParticipants.length}
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      {activeParticipants.map((p, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-slate-800/50 group transition-colors"
-                        >
-                          <div className="flex items-center gap-2 overflow-hidden">
-                            <span className="text-lg grayscale group-hover:grayscale-0 transition-all">
-                              {p.avatar || "🤖"}
-                            </span>
-                            <div className="flex flex-col overflow-hidden">
-                              <span className="text-sm font-medium text-slate-300 truncate">
-                                {p.name}
-                              </span>
-                              <span className="text-[10px] text-blue-500/70 font-mono uppercase">
-                                {i % 4 === 0 ? "Coordinator" : i % 3 === 0 ? "Researcher" : i % 2 === 0 ? "Security" : "Worker"}
-                              </span>
-                            </div>
-                          </div>
-                          {p.action === "thinking" && (
-                            <motion.div
-                              animate={{ scale: [1, 1.2, 1] }}
-                              transition={{ repeat: Infinity, duration: 2 }}
-                              className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.6)]"
-                            />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-            <div className="flex items-center gap-2">
-              <Database size={14} className="text-blue-500" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-                SQLite
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Brain size={14} className="text-cyan-400" />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">
-                Ollama
-              </span>
-            </div>
-          </div>
-        </div>
       </div>
     );
   }
@@ -1312,49 +1215,51 @@ function App() {
               </div>
 
               <div className="space-y-4">
-                <div className="group relative">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
-                      <Monitor size={12} /> Windows (PowerShell / CMD)
-                    </span>
+                {(navigator.userAgent.toLowerCase().includes("win") || navigator.platform.toLowerCase().includes("win")) ? (
+                  <div className="group relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
+                        <Monitor size={12} /> Windows (PowerShell / CMD)
+                      </span>
+                    </div>
+                    <div className="relative flex items-center">
+                      <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
+                        {swarmWinCmd}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(swarmWinCmd);
+                        }}
+                        className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                        title="Copy to clipboard"
+                      >
+                        <Copy size={16} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="relative flex items-center">
-                    <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {swarmWinCmd}
-                    </code>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(swarmWinCmd);
-                      }}
-                      className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
-                      title="Copy to clipboard"
-                    >
-                      <Copy size={16} />
-                    </button>
+                ) : (
+                  <div className="group relative">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 flex items-center gap-2">
+                        <Cpu size={12} /> Mac / Linux (Terminal)
+                      </span>
+                    </div>
+                    <div className="relative flex items-center">
+                      <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
+                        {swarmUnixCmd}
+                      </code>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(swarmUnixCmd);
+                        }}
+                        className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                        title="Copy to clipboard"
+                      >
+                        <Copy size={16} />
+                      </button>
+                    </div>
                   </div>
-                </div>
-
-                <div className="group relative">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 flex items-center gap-2">
-                      <Cpu size={12} /> Mac / Linux (Terminal)
-                    </span>
-                  </div>
-                  <div className="relative flex items-center">
-                    <code className="w-full bg-black/40 border border-white/10 rounded-xl p-3 text-[11px] font-mono text-gray-300 pr-12 line-clamp-1">
-                      {swarmUnixCmd}
-                    </code>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(swarmUnixCmd);
-                      }}
-                      className="absolute right-2 p-2 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
-                      title="Copy to clipboard"
-                    >
-                      <Copy size={16} />
-                    </button>
-                  </div>
-                </div>
+                )}
               </div>
 
               <div className="mt-8 pt-6 border-t border-white/5 grid grid-cols-3 gap-2">
