@@ -21,6 +21,8 @@
   --tw-color-gray-500: 107 114 128;
   --tw-color-gray-600: 75 85 99;
 
+  --irc-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.05'/%3E%3C/svg%3E");
+
   font-family: "JetBrains Mono", "Fira Code", monospace;
   background-color: var(--irc-bg);
   color: var(--irc-text);
@@ -46,11 +48,14 @@ body {
   --tw-color-gray-400: 55 65 81;    /* Tailwind dark gray-700 */
   --tw-color-gray-500: 107 114 128; /* Tailwind dark gray-500 */
   --tw-color-gray-600: 156 163 175; /* Tailwind dark gray-400 */
+
+  --irc-texture: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.08'/%3E%3C/svg%3E");
 }
 
 body {
   margin: 0;
   background-color: var(--irc-bg);
+  background-image: var(--irc-texture);
   overflow: hidden;
   height: 100vh;
 }

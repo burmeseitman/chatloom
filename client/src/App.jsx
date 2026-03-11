@@ -1086,35 +1086,50 @@ function App() {
               </div>
             </div>
             {/* Split Layout for Categories and Topics */}
-            <div className="relative flex flex-col xl:flex-row justify-center w-full">
+            <div className="flex flex-col xl:flex-row gap-6 lg:gap-10 w-full">
               
               {/* Categories Sidebar */}
-              <div className="xl:absolute xl:left-0 xl:w-56 shrink-0 flex flex-col gap-3 mb-8 xl:mb-0">
-                <div className="flex items-center gap-2 mb-2 px-2 md:px-0">
+              <div className="xl:w-64 shrink-0 flex flex-col gap-3 mb-8 xl:mb-0">
+                <div className="flex items-center gap-2 mb-2 px-2 md:px-0 xl:px-2">
                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Sphere Selection</span>
                 </div>
                 <div className="flex xl:flex-col gap-2 overflow-x-auto pb-4 xl:pb-0 px-2 xl:px-0 no-scrollbar">
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setSelectedCategory(cat)}
-                      className={`px-4 xl:px-5 py-3 rounded-2xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap text-left flex items-center justify-between group ${
-                        selectedCategory === cat
-                          ? "bg-blue-600 text-zinc-50 shadow-lg shadow-blue-900/40 border border-blue-400/30"
-                          : "bg-white/5 text-gray-500 hover:bg-[var(--irc-border)] border border-transparent"
-                      }`}
-                    >
-                      <span>{cat}</span>
-                      <div className={`w-1 h-1 rounded-full transition-all ${selectedCategory === cat ? "bg-white animate-pulse" : "bg-white/10 group-hover:bg-blue-400"}`} />
-                    </button>
-                  ))}
+                  {categories.map((cat) => {
+                    const getCategoryIcon = (c) => {
+                      switch (c) {
+                        case "All": return <Globe size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
+                        case "AI": return <Brain size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
+                        case "Tech": return <Cpu size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
+                        case "Gaming": return <Gamepad2 size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
+                        case "Science": return <Atom size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
+                        case "Society": return <Users size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
+                        case "Creative": return <Palette size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
+                        default: return <Hash size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
+                      }
+                    };
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setSelectedCategory(cat)}
+                        className={`px-5 py-3.5 rounded-2xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap text-left flex items-center gap-3 group ${
+                          selectedCategory === cat
+                            ? "bg-blue-600 text-zinc-50 shadow-lg shadow-blue-900/40 border border-blue-400/30"
+                            : "bg-white/5 text-gray-500 hover:bg-[var(--irc-border)] border border-transparent hover:text-gray-300"
+                        }`}
+                      >
+                        {getCategoryIcon(cat)}
+                        <span className="flex-1">{cat}</span>
+                        <div className={`w-1.5 h-1.5 rounded-full transition-all ${selectedCategory === cat ? "bg-white animate-pulse" : "bg-white/10 group-hover:bg-blue-400"}`} />
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
-              {/* Topics Grid - Centered & aligned with FAQ (max-w-4xl) */}
-              <div className="w-full max-w-4xl">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {/* Topics Grid */}
+              <div className="w-full flex-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 lg:gap-6">
                   {isTopicsLoading
                     ? Array.from({ length: 12 }).map((_, i) => (
                         <div
@@ -1203,7 +1218,7 @@ function App() {
           </div>
 
           {/* FAQ Section */}
-          <div className="w-full max-w-4xl mt-24 mb-12">
+          <div className="w-full max-w-7xl mt-24 mb-12">
             <div className="flex items-center gap-4 mb-10">
               <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/10" />
               <h2 className="text-sm font-black uppercase tracking-[0.4em] text-gray-500">
@@ -1229,6 +1244,20 @@ function App() {
             </div>
           </div>
         </div>
+
+        {/* Footer */}
+        <footer className="w-full py-8 border-t border-white/5 bg-black/20 flex flex-col items-center justify-center gap-2">
+          <p className="text-xs font-medium text-gray-500 tracking-wider">
+            &copy; {new Date().getFullYear()} ChatLoom. All rights reserved.
+          </p>
+          <div className="flex items-center gap-4 text-[10px] text-gray-600 font-black uppercase tracking-[0.2em]">
+            <span>Privacy</span>
+            <span>&bull;</span>
+            <span>Terms</span>
+            <span>&bull;</span>
+            <span>Decentralized</span>
+          </div>
+        </footer>
 
       </div>
     );
