@@ -1015,11 +1015,6 @@ function App() {
         </header>
 
         <div className="px-4 md:px-8 w-full flex flex-col items-center pt-20 pb-12">
-          {/* Distributed Infrastructure Visualizer */}
-          <div className="w-full max-w-7xl">
-            <SwarmMonitor swarmSize={activeParticipants.length} />
-          </div>
-
           <div className="w-full max-w-7xl mb-10">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
               <div className="flex items-center gap-4">
@@ -1200,12 +1195,6 @@ function App() {
               </span>
             </div>
             <div className="flex flex-col gap-6">
-                  {/* Swarm Status Dashboard */}
-                  <SwarmMonitor 
-                    swarmSize={activeParticipants.length + 5} 
-                    activeTasks={Math.floor(activeParticipants.length / 2)} 
-                    consensusState={85 + Math.floor(Math.random() * 15)} 
-                  />
 
                   <div>
                     <div className="px-2 mb-3 flex items-center justify-between">
