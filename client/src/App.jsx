@@ -144,7 +144,7 @@ const ChatMessage = React.memo(({ msg }) => {
       <span className="irc-timestamp">[{time}]</span>
       <div className="flex-1 flex gap-2">
         <span
-          className={`font-bold shrink-0 ${msg.is_llm ? "text-purple-400" : "text-gray-400"}`}
+          className={`font-bold shrink-0 ${msg.is_llm ? "text-cyan-400" : "text-gray-400"}`}
         >
           {"<"}
           {msg.sender || "Unknown"}
@@ -235,7 +235,7 @@ function App() {
         if (
           res.data.active &&
           res.data.models?.length > 0 &&
-          (step === "topics" || step === "detect")
+          step === "detect"
         ) {
           console.log(
             `DEBUG: Bridge active with ${res.data.models.length} models`,
@@ -604,8 +604,15 @@ function App() {
         }));
 
     const done = (models, step = "setup") => {
+      const savedName = localStorage.getItem("chat_name");
       setModels(models);
-      setStep(step);
+      // Skip setup if user already has a nickname saved
+      if (savedName && name) {
+        setStep("chat");
+        handleJoin(); // Auto-join with existing config
+      } else {
+        setStep(step);
+      }
       isDetectingRef.current = false;
       setIsDetecting(false);
     };
@@ -949,12 +956,12 @@ function App() {
     return (
       <div className="h-screen bg-[#0a0a0c] text-white overflow-y-auto flex flex-col items-center custom-scrollbar">
         <header className="relative flex flex-col md:flex-row items-start md:items-center gap-6 pt-10 pb-10 px-6 md:px-12 w-full border-b border-white/5 bg-white/[0.01]">
-          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-purple-600/5 to-transparent -z-10" />
+          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-blue-600/10 to-transparent -z-10" />
 
           <motion.img
             src={ROBOT_IMAGE}
             alt="Happy Robot"
-            className="w-20 h-20 md:w-28 md:h-28 object-contain z-10 drop-shadow-[0_0_20px_rgba(168,85,247,0.2)]"
+            className="w-20 h-20 md:w-28 md:h-28 object-contain z-10 drop-shadow-[0_0_20px_rgba(34,211,238,0.2)]"
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ duration: 0.8 }}
@@ -984,10 +991,10 @@ function App() {
               <span className="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">
                 Ollama Bridge Setup
               </span>
-              <div className="h-px w-8 bg-purple-500/20" />
+              <div className="h-px w-8 bg-blue-500/20" />
             </div>
             <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-pink-500/30">
-              <Cpu size={14} className="text-pink-400 shrink-0" />
+              <Cpu size={14} className="text-cyan-400 shrink-0" />
               <code
                 className="text-[10px] font-mono text-gray-400 truncate flex-1"
                 title={swarmUnixCmd}
@@ -1011,8 +1018,8 @@ function App() {
           <div className="w-full max-w-7xl mb-10">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
               <div className="flex items-center gap-4">
-                <div className="p-2 bg-purple-500/10 rounded-lg">
-                  <Globe size={16} className="text-purple-400" />
+                <div className="p-2 bg-blue-500/10 rounded-lg">
+                  <Globe size={16} className="text-cyan-400" />
                 </div>
                 <h2 className="text-sm font-black uppercase tracking-[0.3em] text-gray-400">
                   Browse Discussion Topics
@@ -1024,7 +1031,7 @@ function App() {
                 <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
                   <Search
                     size={16}
-                    className={`transition-colors ${searchQuery.length > 0 ? "text-purple-400" : "text-gray-500"}`}
+                    className={`transition-colors ${searchQuery.length > 0 ? "text-cyan-400" : "text-gray-500"}`}
                   />
                 </div>
                 <input
@@ -1032,7 +1039,7 @@ function App() {
                   placeholder="Search topics..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white/[0.03] border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-purple-500/50 focus:bg-white/[0.06] transition-all placeholder:text-gray-600"
+                  className="w-full bg-white/[0.03] border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:bg-white/[0.06] transition-all placeholder:text-gray-600"
                 />
                 {searchQuery.length > 0 && searchQuery.length < 2 && (
                   <div className="absolute -bottom-5 left-1 text-[8px] font-bold text-gray-500 uppercase tracking-widest animate-pulse">
@@ -1063,11 +1070,11 @@ function App() {
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ delay: idx * 0.03, duration: 0.2 }}
                       onClick={() => handleTopicClick(t.name)}
-                      className="glass p-6 rounded-2xl border border-white/5 hover:border-purple-500/50 cursor-pointer transition-all hover:translate-y-[-4px] group min-h-[160px] flex flex-col justify-between"
+                      className="glass p-6 rounded-2xl border border-white/5 hover:border-blue-500/50 cursor-pointer transition-all hover:translate-y-[-4px] group min-h-[160px] flex flex-col justify-between"
                     >
                       <div className="flex justify-between items-start mb-4">
                         <div className="p-2.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl group-hover:from-purple-500/30 group-hover:to-pink-500/30 transition-all">
-                          <div className="text-purple-400 group-hover:text-purple-300">
+                          <div className="text-cyan-400 group-hover:text-purple-300">
                             {getTopicIcon(t.name)}
                           </div>
                         </div>
@@ -1099,7 +1106,7 @@ function App() {
               />
             </button>
             <div className="flex flex-col items-center px-4">
-              <span className="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.3em] mb-1">
+              <span className="text-[10px] font-black text-cyan-500/50 uppercase tracking-[0.3em] mb-1">
                 Progress
               </span>
               <span className="text-sm font-black tabular-nums tracking-tighter">
@@ -1135,7 +1142,7 @@ function App() {
                   key={idx}
                   className="bg-white/[0.02] border border-white/5 p-6 rounded-2xl hover:border-purple-500/30 transition-all cursor-default group"
                 >
-                  <h3 className="text-purple-400 font-bold mb-2 group-hover:text-purple-300 transition-colors">
+                  <h3 className="text-cyan-400 font-bold mb-2 group-hover:text-purple-300 transition-colors">
                     {item.q}
                   </h3>
                   <p className="text-sm text-gray-400 leading-relaxed font-medium">
@@ -1164,7 +1171,7 @@ function App() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <Globe size={14} className="text-cyan-400" />
+              <Globe size={14} className="text-pink-400" />
               <span className="text-[10px] font-black uppercase tracking-[0.2em]">
                 React
               </span>
@@ -1243,7 +1250,7 @@ function App() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <Brain size={14} className="text-purple-400" />
+              <Brain size={14} className="text-cyan-400" />
               <span className="text-[10px] font-black uppercase tracking-[0.2em]">
                 Ollama
               </span>
@@ -1264,8 +1271,8 @@ function App() {
               transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
               className="relative"
             >
-              <div className="absolute inset-0 bg-purple-500/20 blur-2xl rounded-full" />
-              <Bot size={80} className="text-purple-400 relative z-10" />
+              <div className="absolute inset-0 bg-blue-500/20 blur-2xl rounded-full" />
+              <Bot size={80} className="text-cyan-400 relative z-10" />
             </motion.div>
             <h1 className="mt-12 text-3xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-purple-400">
               {status}
@@ -1278,10 +1285,10 @@ function App() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="glass p-8 md:p-12 rounded-[2.5rem] border border-red-500/20 max-w-2xl w-full shadow-2xl shadow-red-900/10 my-8"
+            className="glass p-8 md:p-12 rounded-[2.5rem] border border-blue-500/20 max-w-2xl w-full shadow-2xl shadow-blue-900/10 my-8"
           >
-            <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-red-500/20">
-              <AlertCircle size={32} className="text-red-400" />
+            <div className="w-16 h-16 bg-blue-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-blue-500/20">
+              <AlertCircle size={32} className="text-blue-400" />
             </div>
 
             <h1 className="text-2xl md:text-3xl font-black mb-3">
@@ -1335,7 +1342,7 @@ function App() {
 
                 <div className="group relative">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-pink-400 flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-cyan-400 flex items-center gap-2">
                       <Cpu size={12} /> Mac / Linux (Terminal)
                     </span>
                   </div>
@@ -1358,7 +1365,7 @@ function App() {
 
               <div className="mt-8 pt-6 border-t border-white/5 grid grid-cols-3 gap-2">
                 <div className="text-center">
-                  <div className="w-7 h-7 bg-purple-500/10 rounded-full flex items-center justify-center mx-auto mb-2 text-purple-400 text-[10px] font-bold ring-1 ring-purple-500/20">
+                  <div className="w-7 h-7 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-2 text-cyan-400 text-[10px] font-bold ring-1 ring-blue-500/20">
                     1
                   </div>
                   <div className="text-[8px] font-bold text-gray-500 uppercase tracking-widest">
@@ -1366,7 +1373,7 @@ function App() {
                   </div>
                 </div>
                 <div className="text-center">
-                  <div className="w-7 h-7 bg-purple-500/10 rounded-full flex items-center justify-center mx-auto mb-2 text-purple-400 text-[10px] font-bold ring-1 ring-purple-500/20">
+                  <div className="w-7 h-7 bg-blue-500/10 rounded-full flex items-center justify-center mx-auto mb-2 text-cyan-400 text-[10px] font-bold ring-1 ring-blue-500/20">
                     2
                   </div>
                   <div className="text-[8px] font-bold text-gray-500 uppercase tracking-widest">
@@ -1387,7 +1394,7 @@ function App() {
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => handleTopicClick(selectedTopic)}
-                className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl font-black text-sm shadow-lg shadow-purple-900/30 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl font-black text-sm shadow-lg shadow-blue-900/30 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2"
               >
                 <RefreshCw size={18} /> RETRY CONNECTION
               </button>
@@ -1419,8 +1426,8 @@ function App() {
             <X size={20} />
           </button>
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-purple-500/20 rounded-xl">
-              <Bot className="text-purple-400" size={24} />
+            <div className="p-2 bg-blue-500/20 rounded-xl">
+              <Bot className="text-blue-400" size={24} />
             </div>
             <div>
               <h2 className="text-2xl font-black italic tracking-tighter">
@@ -1447,11 +1454,11 @@ function App() {
                     setJoinError("");
                   }}
                   placeholder="e.g. JARVIS-9000"
-                  className={`w-full bg-white/5 border ${nicknameError || joinError ? "border-red-500/50" : "border-white/10"} p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-500/50 transition-all text-lg font-bold`}
+                  className={`w-full bg-white/5 border ${nicknameError || joinError ? "border-red-500/50" : "border-white/10"} p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-blue-500/50 transition-all text-lg font-bold`}
                 />
 
                 {isCheckingNickname && (
-                  <div className="mt-1 flex items-center gap-2 text-[10px] text-purple-400 font-bold animate-pulse">
+                  <div className="mt-1 flex items-center gap-2 text-[10px] text-cyan-400 font-bold animate-pulse">
                     <RefreshCw size={10} className="animate-spin" /> Verifying
                     availability...
                   </div>
@@ -1459,7 +1466,7 @@ function App() {
 
                 {nicknameError && !isCheckingNickname && (
                   <div className="mt-2 space-y-2">
-                    <p className="text-[10px] text-red-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                    <p className="text-[10px] text-blue-400 font-bold uppercase tracking-wider flex items-center gap-1">
                       <AlertCircle size={10} /> {nicknameError}
                     </p>
                     {nicknameSuggestions.length > 0 && (
@@ -1471,7 +1478,7 @@ function App() {
                           <button
                             key={s}
                             onClick={() => setName(s)}
-                            className="text-[9px] bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/20 px-2 py-0.5 rounded-full transition-all font-bold"
+                            className="text-[9px] bg-blue-500/10 hover:bg-blue-500/20 text-cyan-400 border border-blue-500/20 px-2 py-0.5 rounded-full transition-all font-bold"
                           >
                             {s}
                           </button>
@@ -1494,7 +1501,7 @@ function App() {
                       className={`w-full flex flex-col p-3 rounded-xl border transition-all ${
                         selectedModel?.name === m.name &&
                         selectedModel?.origin === m.origin
-                          ? "bg-purple-500/20 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.15)]"
+                          ? "bg-blue-500/20 border-blue-500/50 shadow-[0_0_20px_rgba(168,85,247,0.15)]"
                           : "bg-white/5 border-white/5 hover:border-white/20"
                       }`}
                     >
@@ -1543,7 +1550,7 @@ function App() {
                         }}
                         className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${
                           hardwareMode === key
-                            ? "bg-purple-500/20 border-purple-500/50"
+                            ? "bg-blue-500/20 border-blue-500/50"
                             : "bg-white/5 border-white/5 hover:border-white/20"
                         }`}
                       >
@@ -1551,7 +1558,7 @@ function App() {
                           size={20}
                           className={
                             hardwareMode === key
-                              ? "text-purple-400"
+                              ? "text-cyan-400"
                               : "text-gray-500"
                           }
                         />
@@ -1583,7 +1590,7 @@ function App() {
                 </label>
                 <button
                   onClick={() => setShowPersonaForm(true)}
-                  className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 font-bold"
+                  className="text-xs text-cyan-400 hover:text-purple-300 flex items-center gap-1 font-bold"
                 >
                   <PlusCircle size={14} /> NEW PERSONA
                 </button>
@@ -1597,7 +1604,7 @@ function App() {
                     onClick={() => setSelectedPersona(p)}
                     className={`snap-center shrink-0 w-24 h-32 flex flex-col items-center justify-center gap-2 rounded-2xl border transition-all ${
                       selectedPersona?.id === p.id
-                        ? "bg-purple-500/20 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.15)]"
+                        ? "bg-blue-500/20 border-blue-500/50 shadow-[0_0_20px_rgba(168,85,247,0.15)]"
                         : "bg-white/5 border-white/5 hover:border-white/20"
                     }`}
                   >
@@ -1617,7 +1624,7 @@ function App() {
                   animate={{ opacity: 1 }}
                   className="bg-white/5 border border-white/10 p-4 rounded-2xl"
                 >
-                  <h4 className="text-purple-400 font-bold mb-1 flex items-center gap-2">
+                  <h4 className="text-cyan-400 font-bold mb-1 flex items-center gap-2">
                     {selectedPersona.avatar} {selectedPersona.name}
                   </h4>
                   <p className="text-xs text-gray-400 italic mb-2">
@@ -1634,7 +1641,7 @@ function App() {
                 <motion.div
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className="bg-red-500/10 border border-red-500/50 p-4 rounded-2xl text-red-400 text-sm font-bold flex items-center gap-2"
+                  className="bg-blue-500/10 border border-red-500/50 p-4 rounded-2xl text-blue-400 text-sm font-bold flex items-center gap-2"
                 >
                   <X size={16} /> {joinError}
                 </motion.div>
@@ -1766,7 +1773,7 @@ function App() {
               exit={{ scale: 0.9, opacity: 0 }}
               className="glass max-w-sm w-full p-8 rounded-3xl border border-white/10 shadow-2xl text-center"
             >
-              <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+              <div className="w-16 h-16 bg-blue-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
                 <LogOut size={32} />
               </div>
               <h2 className="text-xl font-bold text-white mb-2">Leave Room?</h2>
@@ -1795,7 +1802,7 @@ function App() {
       <div className="irc-chat-area">
         <div className="p-4 border-b border-white/5 bg-[#12141a] flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-500/10 rounded-lg">
+            <div className="p-2 bg-blue-500/10 rounded-lg">
               <Hash className="text-purple-500" size={16} />
             </div>
             <h3 className="font-bold text-sm tracking-tight text-gray-200">
@@ -1804,7 +1811,7 @@ function App() {
           </div>
           <div className="text-[10px] text-gray-500 flex gap-4 uppercase tracking-widest items-center">
             <div className="flex items-baseline gap-1">
-              <span className="text-purple-400 font-black">
+              <span className="text-cyan-400 font-black">
                 {activeParticipants.length}
               </span>
               <span>nodes</span>
@@ -1815,7 +1822,7 @@ function App() {
             >
               <LogOut
                 size={14}
-                className="group-hover:text-red-400 transition-colors"
+                className="group-hover:text-blue-400 transition-colors"
               />
             </button>
           </div>
@@ -1831,7 +1838,7 @@ function App() {
         </div>
 
         <div className="p-4 border-t border-white/5 bg-[#0a0a0c] flex items-center gap-4">
-          <div className="flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3 flex-1 border border-white/5 focus-within:border-purple-500/50 transition-all">
+          <div className="flex items-center gap-3 bg-white/5 rounded-2xl px-4 py-3 flex-1 border border-white/5 focus-within:border-blue-500/50 transition-all">
             <input
               type="text"
               placeholder={`Message #${selectedTopic}...`}
@@ -1842,7 +1849,7 @@ function App() {
             />
             <button
               onClick={handleSend}
-              className="text-purple-400 hover:text-purple-300 transition-colors p-1"
+              className="text-cyan-400 hover:text-purple-300 transition-colors p-1"
             >
               <Send size={18} />
             </button>
@@ -1855,7 +1862,7 @@ function App() {
           <div className="flex items-center gap-4">
             <motion.div
               whileHover={{ scale: 1.05 }}
-              className="w-12 h-12 flex items-center justify-center bg-purple-500/10 border border-purple-500/20 rounded-2xl text-2xl shadow-inner shadow-purple-500/10"
+              className="w-12 h-12 flex items-center justify-center bg-blue-500/10 border border-blue-500/20 rounded-2xl text-2xl shadow-inner shadow-purple-500/10"
             >
               {avatar}
             </motion.div>
@@ -1900,7 +1907,7 @@ function App() {
                     {p.name}
                   </p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[6px] px-1 bg-purple-500/20 text-purple-400 rounded-sm font-black uppercase tracking-widest border border-purple-500/30">
+                    <span className="text-[6px] px-1 bg-blue-500/20 text-cyan-400 rounded-sm font-black uppercase tracking-widest border border-purple-500/30">
                       AI Agent
                     </span>
                     <p className="text-[8px] text-gray-600 truncate tracking-widest uppercase">

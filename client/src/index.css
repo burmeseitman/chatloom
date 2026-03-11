@@ -3,15 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --irc-bg: #0c0d10;
-  --irc-sidebar: #12141a;
-  --irc-border: #23262e;
-  --irc-accent: #6b46c1;
-  --irc-text: #e2e8f0;
-  --irc-dim: #718096;
-  --irc-system: #f6ad55;
-  --irc-join: #48bb78;
-  --irc-leave: #f56565;
+  --irc-bg: #030407;
+  --irc-sidebar: #08090d;
+  --irc-border: rgba(255, 255, 255, 0.05);
+  --irc-accent: #22d3ee; /* Neon Cyan */
+  --irc-accent-glow: rgba(34, 211, 238, 0.4);
+  --irc-secondary: #6366f1; /* Indigo */
+  --irc-text: #f1f5f9;
+  --irc-dim: #64748b;
+  --irc-system: #fbbf24;
+  --irc-join: #10b981;
+  --irc-leave: #ef4444;
 
   font-family: "JetBrains Mono", "Fira Code", monospace;
   background-color: var(--irc-bg);
