@@ -969,9 +969,8 @@ function App() {
   };
 
   const apiBase = BACKEND_URL || window.location.origin;
-  const displayBase = apiBase.replace("api.", "www.");
-  const swarmUnixCmd = `curl -sSL ${displayBase}/setup/unix/${sessionId} | bash`;
-  const swarmWinCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${displayBase}/setup/windows/${sessionId} | iex"`;
+  const swarmUnixCmd = `curl -sSL ${apiBase}/api/setup/unix/${sessionId} | bash`;
+  const swarmWinCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${apiBase}/api/setup/windows/${sessionId} | iex"`;
 
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
