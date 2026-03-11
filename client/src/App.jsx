@@ -46,6 +46,9 @@ import {
   Check,
   Sun,
   Moon,
+  Monitor,
+  X,
+  Copy,
 } from "lucide-react";
 
 // Use public/robot.png for the header image
@@ -1034,8 +1037,8 @@ function App() {
         </header>
 
         <SwarmMonitor 
-          swarmSize={activeParticipants.length || 5} 
-          activeTasks={activeParticipants.filter(p => p.action === "thinking").length} 
+          swarmSize={activeParticipants?.length || 5} 
+          activeTasks={(activeParticipants || []).filter(p => p && p.action === "thinking").length} 
         />
 
         <div className="px-4 md:px-8 w-full flex flex-col items-center pt-20 pb-12">
