@@ -147,7 +147,7 @@ def setup_tray():
         MenuItem("Exit Node", on_quit)
     )
     
-    icon = Icon("ChatLoomNode", create_icon_image(), "ChatLoom Node", menu)
+    icon = Icon("ChatLoom", create_icon_image(), "ChatLoom", menu)
     
     # Run bridge in background thread
     threading.Thread(target=bridge_loop, daemon=True).start()
