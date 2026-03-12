@@ -12,12 +12,11 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-# CRITICAL FIX: Get the actual script directory, not the current working directory
+# Get the actual script directory
 $BASE_DIR = $PSScriptRoot
 if ([string]::IsNullOrEmpty($BASE_DIR)) {
     $BASE_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 }
-# Fallback if still empty
 if ([string]::IsNullOrEmpty($BASE_DIR)) {
     $BASE_DIR = Get-Location
 }
@@ -61,24 +60,55 @@ Write-Host "Initializing database..." -ForegroundColor Gray
 # 6. Handle NSSM (Service Manager)
 $BIN_DIR = Join-Path -Path $BASE_DIR -ChildPath ".bin"
 $NSSM_EXE = Join-Path -Path $BIN_DIR -ChildPath "nssm.exe"
+
 if (!(Test-Path -Path "$NSSM_EXE")) {
     Write-Host "Setting up Service Manager (NSSM)..." -ForegroundColor Gray
     if (!(Test-Path -Path "$BIN_DIR")) { New-Item -ItemType Directory -Path "$BIN_DIR" -Force }
     $nssm_zip = Join-Path -Path $BIN_DIR -ChildPath "nssm.zip"
     $nssm_temp = Join-Path -Path $BIN_DIR -ChildPath "nssm_temp"
     
-    Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile "$nssm_zip" -UseBasicParsing
-    Expand-Archive -Path "$nssm_zip" -DestinationPath "$nssm_temp" -Force
-    # Pick the 64-bit version
-    $nssm_src = Join-Path -Path $nssm_temp -ChildPath "nssm-2.24\win64\nssm.exe"
-    Copy-Item -Path "$nssm_src" -Destination "$NSSM_EXE"
-    Remove-Item -Path "$nssm_temp" -Recurse -Force
-    Remove-Item -Path "$nssm_zip" -Force
+    # Mirror list in case official site is down (503 error)
+    $mirrors = @(
+        "https://github.com/fawno/nssm.cc/releases/download/v2.24/nssm-2.24.zip",
+        "https://nssm.cc/release/nssm-2.24.zip"
+    )
+
+    $success = $false
+    foreach ($url in $mirrors) {
+        try {
+            Write-Host "Downloading NSSM from: $url" -ForegroundColor Gray
+            Invoke-WebRequest -Uri $url -OutFile "$nssm_zip" -UseBasicParsing -ErrorAction Stop
+            $success = $true
+            break
+        } catch {
+            Write-Host "Mirror failed: $url" -ForegroundColor Yellow
+        }
+    }
+
+    if ($success) {
+        Write-Host "Extracting NSSM..." -ForegroundColor Gray
+        Expand-Archive -Path "$nssm_zip" -DestinationPath "$nssm_temp" -Force
+        
+        # Search for the 64-bit exe in the extracted files (structure might vary by mirror)
+        $extracted_exe = Get-ChildItem -Path "$nssm_temp" -Recurse -Filter "nssm.exe" | Where-Object { $_.FullName -match "win64" } | Select-Object -First 1
+        if ($extracted_exe) {
+            Copy-Item -Path $extracted_exe.FullName -Destination "$NSSM_EXE" -Force
+            Write-Host "NSSM installed successfully." -ForegroundColor Green
+        } else {
+            Write-Host "Error: Could not find nssm.exe in the downloaded package." -ForegroundColor Red
+            exit
+        }
+        
+        Remove-Item -Path "$nssm_temp" -Recurse -Force
+        Remove-Item -Path "$nssm_zip" -Force
+    } else {
+        Write-Host "Error: Failed to download NSSM from all available mirrors. Please download it manually and place it in $BIN_DIR\nssm.exe" -ForegroundColor Red
+        exit
+    }
 }
 
 # 7. Setup ChatLoom Server Service
 Write-Host "Configuring ChatLoom Windows Service..." -ForegroundColor Gray
-Write-Host "Note: If you see 'Marked for deletion', please CLOSE Services.msc dashboard." -ForegroundColor Yellow
 & "$NSSM_EXE" stop ChatLoomServer 2>$null
 Start-Sleep -Seconds 2
 & "$NSSM_EXE" remove ChatLoomServer confirm 2>$null
@@ -97,7 +127,7 @@ $STDERR_PATH = Join-Path -Path $BASE_DIR -ChildPath "server_err.log"
 & "$NSSM_EXE" set ChatLoomServer AppStderr "$STDERR_PATH"
 
 & "$NSSM_EXE" start ChatLoomServer
-Write-Host "ChatLoom Server is now running as a background service!" -ForegroundColor Green
+Write-Host "✅ ChatLoom Server is now running as a background service!" -ForegroundColor Green
 
 # 8. Setup Cloudflare Tunnel
 Write-Host ""
@@ -116,7 +146,6 @@ if ($TOKEN) {
         Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi" -OutFile "$msi_path" -UseBasicParsing
         Start-Process msiexec.exe -ArgumentList "/i", "`"$msi_path`"", "/quiet" -Wait
         
-        # MSI install path - refresh current session to find it
         $cf_path = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
         if (Test-Path $cf_path) { $cf_cmd = $cf_path }
         $cf_path64 = "C:\Program Files\cloudflared\cloudflared.exe"
@@ -131,7 +160,7 @@ if ($TOKEN) {
 
 Write-Host ""
 Write-Host "------------------------------------------------" -ForegroundColor Blue
-Write-Host " SUCCESS! Your Home VPS is fully operational." -ForegroundColor Green
+Write-Host " 🎉 SUCCESS! Your Home VPS is fully operational." -ForegroundColor Green
 Write-Host " Use 'nssm edit ChatLoomServer' to tweak settings." -ForegroundColor Gray
 Write-Host " Logs: server_out.log / server_err.log" -ForegroundColor Gray
 Write-Host "------------------------------------------------"
