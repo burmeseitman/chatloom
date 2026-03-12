@@ -12,7 +12,19 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
-$BASE_DIR = (Get-Location).Path
+# CRITICAL FIX: Get the actual script directory, not the current working directory
+$BASE_DIR = $PSScriptRoot
+if ([string]::IsNullOrEmpty($BASE_DIR)) {
+    $BASE_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+# Fallback if still empty
+if ([string]::IsNullOrEmpty($BASE_DIR)) {
+    $BASE_DIR = Get-Location
+}
+
+# Ensure we are in the project root
+Set-Location -Path "$BASE_DIR"
+
 $VENV_DIR = Join-Path -Path $BASE_DIR -ChildPath ".venv"
 $REQUIREMENTS_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\requirements.txt"
 $INIT_DB_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\init_db.py"
@@ -20,6 +32,7 @@ $APP_PY_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\app.py"
 
 Write-Host "------------------------------------------------" -ForegroundColor Blue
 Write-Host "  ChatLoom Server - One-Click Host Setup" -ForegroundColor Blue
+Write-Host "  Path: $BASE_DIR" -ForegroundColor Gray
 Write-Host "------------------------------------------------" -ForegroundColor Blue
 
 # 2. Check for Python
@@ -65,8 +78,11 @@ if (!(Test-Path -Path "$NSSM_EXE")) {
 
 # 7. Setup ChatLoom Server Service
 Write-Host "Configuring ChatLoom Windows Service..." -ForegroundColor Gray
+Write-Host "Note: If you see 'Marked for deletion', please CLOSE Services.msc dashboard." -ForegroundColor Yellow
 & "$NSSM_EXE" stop ChatLoomServer 2>$null
+Start-Sleep -Seconds 2
 & "$NSSM_EXE" remove ChatLoomServer confirm 2>$null
+Start-Sleep -Seconds 1
 
 & "$NSSM_EXE" install ChatLoomServer "$APP_PYTHON"
 & "$NSSM_EXE" set ChatLoomServer AppDirectory "$BASE_DIR"
@@ -103,12 +119,14 @@ if ($TOKEN) {
         # MSI install path - refresh current session to find it
         $cf_path = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
         if (Test-Path $cf_path) { $cf_cmd = $cf_path }
+        $cf_path64 = "C:\Program Files\cloudflared\cloudflared.exe"
+        if (Test-Path $cf_path64) { $cf_cmd = $cf_path64 }
     }
     
     Write-Host "Registering Tunnel Service..." -ForegroundColor Green
-    & $cf_cmd service uninstall 2>$null
-    & $cf_cmd service install $TOKEN
-    Write-Host "Cloudflare Tunnel is now running as a service!" -ForegroundColor Green
+    & "$cf_cmd" service uninstall 2>$null
+    & "$cf_cmd" service install $TOKEN
+    Write-Host "✅ Cloudflare Tunnel is now running as a service!" -ForegroundColor Green
 }
 
 Write-Host ""
