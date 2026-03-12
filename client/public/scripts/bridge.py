@@ -25,17 +25,25 @@ MODELS_FOUND = 0
 IS_RUNNING = True
 
 def ollama_request(path, method="GET", data=None, timeout=10):
-    url = f"{OLLAMA_URL}{path}"
-    try:
-        if data:
-            req = urllib.request.Request(url, data=json.dumps(data).encode(),
-                                        headers={"Content-Type": "application/json"})
-        else:
-            req = urllib.request.Request(url)
-        resp = urllib.request.urlopen(req, timeout=timeout)
-        return json.loads(resp.read().decode())
-    except Exception:
-        return None
+    targets = [OLLAMA_URL]
+    if "127.0.0.1" in OLLAMA_URL:
+        targets.append(OLLAMA_URL.replace("127.0.0.1", "localhost"))
+    
+    last_error = None
+    for url_base in targets:
+        url = f"{url_base}{path}"
+        try:
+            if data:
+                req = urllib.request.Request(url, data=json.dumps(data).encode(),
+                                            headers={"Content-Type": "application/json"})
+            else:
+                req = urllib.request.Request(url)
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            return json.loads(resp.read().decode())
+        except Exception as e:
+            last_error = e
+            continue
+    return None
 
 def backend_request(path, method="GET", data=None, timeout=10):
     url = f"{API_URL}{path}"

@@ -345,8 +345,8 @@ def generate_bridge():
             pending_tasks.setdefault(session_id, []).append(task)
             print(f"Generation queued for bridge: {task_id}")
             
-            # Wait for bridge to complete (max 120s)
-            for _ in range(240):
+            # Wait for bridge to complete (max 200s)
+            for _ in range(400):
                 if task_id in task_results:
                     result = task_results.pop(task_id)
                     if result['status'] == 'success':

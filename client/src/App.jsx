@@ -205,7 +205,9 @@ function App() {
   const [isDetecting, setIsDetecting] = useState(false);
   const isDetectingRef = useRef(false);
   const [personas, setPersonas] = useState([]);
-  const [selectedPersona, setSelectedPersona] = useState(null);
+  const [selectedPersona, setSelectedPersona] = useState(
+    () => JSON.parse(localStorage.getItem("chat_persona")) || null,
+  );
   const [showPersonaForm, setShowPersonaForm] = useState(false);
   const [hardwareMode, setHardwareMode] = useState(
     () => localStorage.getItem("chat_hardware_mode") || "balanced",
@@ -228,6 +230,11 @@ function App() {
     }
   }, [models]);
 
+  useEffect(() => {
+    if (selectedPersona) {
+      localStorage.setItem("chat_persona", JSON.stringify(selectedPersona));
+    }
+  }, [selectedPersona]);
   const [newPersona, setNewPersona] = useState({
     name: "",
     avatar: "🤖",
@@ -630,12 +637,22 @@ function App() {
     // If we already have models, just go to setup/chat without fresh detection
     if (models.length > 0) {
       const savedName = localStorage.getItem("chat_name");
-      const savedModel = localStorage.getItem("chat_model");
+      const savedModel = JSON.parse(localStorage.getItem("chat_model"));
+      const savedPersona = JSON.parse(localStorage.getItem("chat_persona"));
+      
       if (savedName && name && savedModel) {
-        setStep("chat");
-        handleJoin();
+        // Ensure we have a persona, if not try to fetch or wait
+        if (!selectedPersona && !savedPersona) {
+          setStep("setup");
+          fetchPersonas();
+        } else {
+          setStep("chat");
+          // Small delay to ensure state is set before join
+          setTimeout(() => handleJoin(), 100);
+        }
       } else {
         setStep("setup");
+        fetchPersonas();
       }
       return;
     }
@@ -799,15 +816,16 @@ function App() {
       const savedRoom = localStorage.getItem("chat_room");
       const savedName = localStorage.getItem("chat_name");
       const savedModel = JSON.parse(localStorage.getItem("chat_model"));
-      const savedAvatar = localStorage.getItem("chat_avatar");
+      const savedPersona = JSON.parse(localStorage.getItem("chat_persona"));
 
-      if (savedStep === "chat" && savedRoom && savedName && savedModel) {
+      if (savedStep === "chat" && savedRoom && savedName && savedModel && savedPersona) {
         socket.emit("join", {
           name: savedName,
           model: savedModel.name,
-          avatar: savedAvatar,
+          avatar: savedPersona.avatar,
           session_id: sessionId,
           room_id: savedRoom,
+          persona: savedPersona
         });
       }
     });
@@ -934,9 +952,12 @@ function App() {
         });
       } catch (e) {
         console.error("Critical Generation Failure", e);
+        const isTimeout = e.code === "ECONNABORTED" || e.response?.status === 504 || e.message?.toLowerCase().includes("timeout");
         socket.emit("llm_response", {
           room_id,
-          text: `System Alert: AI node connection lost. Is Ollama running?`,
+          text: isTimeout 
+            ? `System Alert: Brain node timed out. The model might be too heavy for your hardware. Try a lighter profile?`
+            : `System Alert: AI node connection failed. Please ensure your bridge and Ollama are running.`,
           metadata,
         });
       } finally {

@@ -112,7 +112,7 @@ Write-Host "------------------------------------------"
 
 # Execute bridge.py using pythonw (if available) to hide terminal
 if (Test-Path $venvPyw) {
-    Start-Process $venvPyw -ArgumentList "$bridgePath `"$SESSION_ID`" `"$API_URL`""
+    Start-Process $venvPyw -ArgumentList "`"$bridgePath`" `"$SESSION_ID`" `"$API_URL`""
     Write-Host ""
     Write-Host "✅ SUCCESS! Neural Node is running in the background." -ForegroundColor Green
     Write-Host "🎨 Look for the ChatLoom icon 🐉 in your system tray (bottom-right)." -ForegroundColor Gray
