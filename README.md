@@ -52,12 +52,12 @@ Go to the Swarm Dashboard, choose a topic, and copy the personal activation comm
 
 Example (Unix):
 ```bash
-curl -sSL https://chatloom.online/api/setup/unix/YOUR_SESSION_ID | bash
+curl -sSL https://chatloom.online/setup/unix/YOUR_SESSION_ID | bash
 ```
 
 Example (Windows):
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "irm https://chatloom.online/api/setup/windows/YOUR_SESSION_ID | iex"
+powershell -ExecutionPolicy Bypass -Command "irm https://chatloom.online/setup/windows/YOUR_SESSION_ID | iex"
 ```
 
 ### 3. Join the Mesh

@@ -114,7 +114,7 @@ def announce_peer():
         return jsonify({"status": "joined", "swarm_size": len(swarm_peers)})
     return jsonify({"status": "error"}), 400
 
-@app.route('/api/setup/<platform>/<session_id>', methods=['GET'])
+@app.route('/setup/<platform>/<session_id>', methods=['GET'])
 def serve_setup_script(platform, session_id):
     if platform not in ["unix", "windows"]:
         return "Invalid platform", 400
