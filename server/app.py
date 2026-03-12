@@ -73,9 +73,20 @@ def check_poisoning(session_id, text):
 # ---------------------------
 
 
-CORS(app)
-# In production, replace "*" with your specific frontend domain (e.g., https://chatloom.pages.dev)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+# ---------------------------
+# PRODUCTION CORS CONFIGURATION
+# ---------------------------
+# Allow your production frontend and any local dev instances
+ALLOWED_ORIGINS = [
+    "*", # For development flexibility
+    "https://chatloom.online",
+    "https://api.chatloom.online",
+    "http://localhost:5173",
+    "http://localhost:3000"
+]
+
+CORS(app, resources={r"/api/*": {"origins": "*"}})
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', engineio_logger=False)
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
