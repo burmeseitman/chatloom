@@ -143,12 +143,11 @@ def setup_tray():
 
     menu = Menu(
         MenuItem(lambda text: f"Status: {STATUS}", None, enabled=False),
-        MenuItem("Open Dashboard", on_open_web),
         Menu.SEPARATOR,
         MenuItem("Exit Node", on_quit)
     )
     
-    icon = Icon("AISwarmNode", create_icon_image(), "AI Swarm Node", menu)
+    icon = Icon("ChatLoomNode", create_icon_image(), "ChatLoom Node", menu)
     
     # Run bridge in background thread
     threading.Thread(target=bridge_loop, daemon=True).start()

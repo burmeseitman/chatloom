@@ -212,6 +212,12 @@ function App() {
     localStorage.setItem("chat_hardware_mode", hardwareMode);
   }, [hardwareMode]);
 
+  useEffect(() => {
+    if (selectedModel) {
+      localStorage.setItem("chat_model", JSON.stringify(selectedModel));
+    }
+  }, [selectedModel]);
+
   const [newPersona, setNewPersona] = useState({
     name: "",
     avatar: "🤖",
@@ -248,23 +254,28 @@ function App() {
           }));
           
           setModels(bridgedModels);
+          setBridgeActive(true);
+
           if (bridgedModels.length > 0 && !selectedModel) {
             setSelectedModel(bridgedModels[0]);
           }
 
           // If we are waiting on the detection screen, jump to setup automatically
           if (step === "detect") {
-            console.log(`DEBUG: Bridge auto-detected with ${bridgedModels.length} models. Transitioning to setup.`);
             setStep("setup");
             fetchPersonas();
           }
+        } else {
+          setBridgeActive(false);
+          if (models.length > 0) setModels([]);
         }
       } catch (e) {
-        // Silent
+        setBridgeActive(false);
+        if (models.length > 0) setModels([]);
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [step, sessionId]);
+  }, [step, sessionId, models.length]);
 
   const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
@@ -607,11 +618,26 @@ function App() {
 
     setSelectedTopic(topicName);
     localStorage.setItem("chat_room", topicName);
+    
+    // If we already have models, just go to setup/chat without fresh detection
+    if (models.length > 0) {
+      const savedName = localStorage.getItem("chat_name");
+      const savedModel = localStorage.getItem("chat_model");
+      if (savedName && name && savedModel) {
+        setStep("chat");
+        handleJoin();
+      } else {
+        setStep("setup");
+      }
+      return;
+    }
+
     isDetectingRef.current = true;
     setIsDetecting(true);
     setStep("detect");
     setStatus("Looking for your brain node...");
-    setModels([]);
+    // Only clear if absolutely necessary, but keeping models helps avoid blank screens
+    // setModels([]); 
 
     const isHttps = window.location.protocol === "https:";
     const controller = new AbortController();
@@ -1023,11 +1049,17 @@ function App() {
           >
             <div className="flex items-center justify-between px-1 mb-1">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-black text-purple-500/50 uppercase tracking-[0.2em]">
-                  Ollama Bridge Setup
+                <span className={`text-[10px] font-black uppercase tracking-[0.2em] ${bridgeActive ? "text-green-400" : "text-purple-500/50"}`}>
+                  {bridgeActive ? "Neural Node Online" : "Ollama Bridge Setup"}
                 </span>
-                <div className="h-px w-8 bg-blue-500/20" />
+                <div className={`h-px w-8 ${bridgeActive ? "bg-green-500/20" : "bg-blue-500/20"}`} />
               </div>
+              {!bridgeActive && selectedModel && (
+                <div className="flex items-center gap-1.5 px-2 py-1 bg-red-500/10 border border-red-500/20 rounded-lg animate-pulse">
+                  <AlertCircle size={10} className="text-red-400" />
+                  <span className="text-[8px] font-bold text-red-400 uppercase tracking-widest">Node Offline</span>
+                </div>
+              )}
               <button 
                 onClick={toggleTheme}
                 className="p-2 bg-white/5 hover:bg-white/10 rounded-xl border border-white/5 transition-all text-gray-500 hover:text-cyan-400"
@@ -1036,35 +1068,74 @@ function App() {
                 {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
               </button>
             </div>
+            
             <div className="flex flex-col sm:flex-row items-center gap-2">
-              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-pink-500/30">
-                <Cpu size={14} className="text-cyan-400 shrink-0" />
-                <code
-                  className="text-[10px] font-mono text-gray-400 truncate flex-1"
-                  title={swarmUnixCmd}
-                >
-                  {swarmUnixCmd}
-                </code>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(swarmUnixCmd);
-                  }}
-                  className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
-                  title="Copy Bridge command"
-                >
-                  <Copy size={13} />
-                </button>
-              </div>
+              {bridgeActive ? (
+                // NODE ACTIVE VIEW
+                <div className="flex items-center gap-4 bg-green-500/5 border border-green-500/20 rounded-xl px-4 py-2 min-w-[300px] transition-all">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+                    <Cpu size={14} className="text-green-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[9px] font-black text-gray-500 uppercase tracking-tighter leading-none mb-0.5">
+                      Active Model
+                    </p>
+                    <p className="text-[11px] font-bold text-gray-200 truncate">
+                      {selectedModel?.name || models[0]?.name || "Auto-detected"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setStep("setup");
+                      fetchPersonas();
+                    }}
+                    className="ml-2 px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 border border-green-500/20 rounded-lg transition-all font-black text-[9px] uppercase tracking-widest"
+                  >
+                    Adjust
+                  </button>
+                </div>
+              ) : (
+                // SETUP NEEDED VIEW
+                <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-pink-500/30">
+                  <Cpu size={14} className="text-cyan-400 shrink-0" />
+                  <code
+                    className="text-[10px] font-mono text-gray-400 truncate flex-1"
+                    title={swarmUnixCmd}
+                  >
+                    {swarmUnixCmd}
+                  </code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(swarmUnixCmd);
+                    }}
+                    className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                    title="Copy Bridge command"
+                  >
+                    <Copy size={13} />
+                  </button>
+                </div>
+              )}
+              
               <button
                 onClick={() => {
-                  setStep("detect");
-                  setIsDetecting(false); 
-                  handleTopicClick(selectedTopic || "General Chat");
+                  if (models.length > 0) {
+                    setStep("setup");
+                    fetchPersonas();
+                  } else {
+                    setStep("detect");
+                    setIsDetecting(false); 
+                    handleTopicClick(selectedTopic || "General Chat");
+                  }
                 }}
-                className="px-5 py-2.5 bg-gradient-to-r from-blue-600/20 to-purple-600/20 hover:from-blue-600/30 hover:to-purple-600/30 text-cyan-400 border border-blue-500/30 rounded-xl transition-all font-black text-[10px] uppercase tracking-[0.2em] flex items-center gap-2 shadow-lg shadow-blue-500/5 group"
+                className={`px-5 py-2.5 rounded-xl transition-all font-black text-[10px] uppercase tracking-[0.2em] flex items-center gap-2 shadow-lg group border ${
+                  models.length > 0 
+                  ? "bg-white/5 hover:bg-white/10 text-gray-400 border-white/10" 
+                  : "bg-gradient-to-r from-blue-600/20 to-purple-600/20 hover:from-blue-600/30 hover:to-purple-600/30 text-cyan-400 border-blue-500/30 shadow-blue-500/5"
+                }`}
               >
                 <Settings size={14} className="group-hover:rotate-90 transition-transform duration-500" />
-                Configure Node
+                {models.length > 0 ? "Agent Config" : "Connect Node"}
               </button>
             </div>
           </motion.div>
