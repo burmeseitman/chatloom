@@ -85,6 +85,23 @@ bridge_sessions = {}   # {session_id: {"models": [...], "last_seen": timestamp}}
 pending_tasks = {}     # {session_id: [{task_id, model, prompt, ...}]}
 task_results = {}      # {task_id: {"status", "response", ...}}
 
+def broadcast_swarm_stats():
+    """Broadcast global swarm metrics (counts nodes and thinking tasks) to all clients."""
+    now = time.time()
+    # Count unique active bridges (heartbeat within 30s)
+    total_nodes = len([sid for sid, data in bridge_sessions.items() if now - data.get('last_seen', 0) < 30])
+    
+    # Count active tasks across all rooms
+    active_tasks = 0
+    for room_id, room in active_rooms.items():
+        active_tasks += len([sid for sid, info in room['active_llms'].items() if info.get('action') == 'thinking'])
+    
+    # Broadcast globally
+    socketio.emit('swarm_stats', {
+        "total_nodes": total_nodes,
+        "active_tasks": active_tasks
+    })
+
 # === DECENTRALIZED SWARM STATE ===
 swarm_peers = {}       # {peer_id: {"addr": ..., "type": ..., "last_seen": ...}}
 knowledge_map = {}     # {key: value} for shared knowledge
@@ -183,6 +200,7 @@ def bridge_heartbeat():
         "ollama_url": data.get('ollama_url', 'http://127.0.0.1:11434')
     }
     print(f"Bridge heartbeat: {session_id} | {len(models)} models")
+    broadcast_swarm_stats()
     return jsonify({"status": "success"})
 
 @app.route('/api/bridge/poll', methods=['GET'], strict_slashes=False)
@@ -220,6 +238,7 @@ def bridge_disconnect():
     if session_id and session_id in bridge_sessions:
         del bridge_sessions[session_id]
         print(f"Bridge disconnected: {session_id}")
+        broadcast_swarm_stats()
     return jsonify({"status": "success"})
 
 @app.route('/api/bridge/status/<session_id>', methods=['GET'])
@@ -622,6 +641,7 @@ def handle_join(data):
     history = get_room_history(room_id)
     socketio.emit('chat_history', history, to=request.sid)
     broadcast_llm_list(room_id)
+    broadcast_swarm_stats() # Update global node count
     socketio.start_background_task(llm_introduce, request.sid, room_id)
 
 def neural_pulse(room_id):
@@ -661,6 +681,7 @@ def handle_llm_action(data):
         "name": data.get('name'),
         "action": data.get('action')
     }, room=room_id, include_self=True)
+    broadcast_swarm_stats() # Update global thinking tasks
 
 def llm_introduce(sid, room_id):
     if room_id not in active_rooms: return
@@ -743,10 +764,21 @@ def handle_llm_response(data):
     turn = metadata.get('turn', 1)
     max_turns = metadata.get('max_turns', 10)
     
-    if turn < max_turns and random.random() > 0.3:
-        # Avoid same AI talking to itself instantly
-        socketio.sleep(random.randint(2, 5))
-        socketio.start_background_task(llm_participate, room_id, text, turn=turn + 1, max_turns=max_turns)
+    if turn < max_turns:
+        # Check if AI tagged someone
+        tagged_sid = None
+        if "@" in text:
+            for sid, info in active_rooms[room_id]['active_llms'].items():
+                if f"@{info['name']}" in text.lower():
+                    tagged_sid = sid
+                    break
+        
+        if tagged_sid:
+            socketio.sleep(random.randint(1, 3)) # Faster response for direct tags
+            socketio.start_background_task(llm_participate, room_id, text, turn=turn + 1, max_turns=max_turns, target_sid=tagged_sid)
+        elif random.random() > 0.4: # Generic discussion continue
+            socketio.sleep(random.randint(3, 7))
+            socketio.start_background_task(llm_participate, room_id, text, turn=turn + 1, max_turns=max_turns)
 
 @socketio.on('message')
 def handle_message(data):
@@ -798,28 +830,37 @@ def llm_participate(room_id, last_message, turn=1, max_turns=10, target_sid=None
     if target_sid and target_sid in active_llms:
         chosen_sid = target_sid
     else:
-        # Autonomous Pulse skips the random silence chance if it's the starter
-        if turn == 1 and random.random() > 0.9: return 
-        chosen_sid = random.choice(list(active_llms.keys()))
+        # Avoid same speaker repeating if possible
+        potential_sids = list(active_llms.keys())
+        # Generic discussion skip chance
+        if turn == 1 and random.random() > 0.8: return 
+        chosen_sid = random.choice(potential_sids)
         
     llm_info = active_llms[chosen_sid]
     persona = llm_info.get('persona', {})
     base_prompt = persona.get('base_prompt', 'You are a helpful explorer.')
     is_tagged = target_sid == chosen_sid
 
+    # Fetch context history (last 10 messages)
+    history = get_room_history(room_id)[-10:]
+    history_str = "\n".join([f"{m['data']['sender']}: {m['data']['text']}" for m in history])
+
     system_template = get_setting("system_participate", (
-        "You are {name}. Your character: {base_prompt}."
+        "You are {name}. Profile: {base_prompt}.\n\n"
+        "ROOM CONTEXT:\n{history}\n\n"
+        "INSTRUCTION: You are in a real-time chat room. Respond concisely. "
+        "If someone mentions you, address them directly."
     ))
     
-    system_instruction = system_template.format(name=llm_info['name'], base_prompt=base_prompt)
-    
-    prompt_template = get_setting("prompt_wrapper", "{last_message}")
-    prompt = prompt_template.format(
-        room_id=room_id,
-        tagged="Yes" if is_tagged else "No",
-        last_message=last_message,
-        name=llm_info['name']
+    system_instruction = system_template.format(
+        name=llm_info['name'], 
+        base_prompt=base_prompt,
+        history=history_str
     )
+    
+    prompt = f"The last message was from {last_message}. What is your response?"
+    if is_tagged:
+        prompt = f"You were directly mentioned in: {last_message}. Respond to this mention."
     
     # Update activity to prevent double pulse during generation
     if room_id in active_rooms:
@@ -853,6 +894,7 @@ def handle_leave(data=None):
             socketio.emit('system_message', sys_msg, room=rid)
             add_to_history(rid, 'system', sys_msg)
             broadcast_llm_list(rid)
+            broadcast_swarm_stats() # Update global node count
             
             # Autonomously request the client to kill its local tunnel for security (Kill Switch)
             session_id = llm_info.get('session_id')

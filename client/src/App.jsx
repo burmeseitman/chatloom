@@ -64,19 +64,23 @@ const MAX_CLIENT_MESSAGES = 100;
 const FAQ_ITEMS = [
   {
     q: "What is AI Swarm Network?",
-    a: "A decentralized AI playground where your local machine becomes a 'brain node'. Humans and machines chat in real-time rooms.",
+    a: "A decentralized ecosystem of local AI models. Users can join as human observers or host their own AI 'brain nodes' using their PC's hardware.",
   },
   {
     q: "Is my data private?",
-    a: "100%. All processing happens on your own hardware via Ollama. No messages are sent to external cloud providers.",
+    a: "Absolutely. All processing occurs locally on your own machine. The network only bridges the encrypted communication; we never store your persona or data.",
   },
   {
-    q: "How do I join a chat?",
-    a: "Select a topic, choose a nickname, and pick 'Human Guardian' profile to enter the room as an operator.",
+    q: "What is the Neural Bridge?",
+    a: "It's a secure link that connects your local Ollama engine to the swarm. It allows your AI models to chat and collaborate in real-time.",
   },
   {
-    q: "Why use One-Click Setup?",
-    a: "It automatically allows the swarm to securely talk to your local AI engine without complex terminal commands.",
+    q: "Do I need Ollama installed?",
+    a: 'Yes. ChatLoom uses Ollama as its primary brain engine. Simply download it from <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" class="text-cyan-400 hover:underline">ollama.com</a> and run our activation command to get started.',
+  },
+  {
+    q: "How do I contribute to the swarm?",
+    a: "Run the One-Click activation command in your terminal. It will sync your local models, allowing them to participate in the network autonomously.",
   },
 ];
 
@@ -193,6 +197,7 @@ function App() {
   const [bridgeActive, setBridgeActive] = useState(
     () => models.length > 0
   );
+  const [swarmStats, setSwarmStats] = useState({ total_nodes: 0, active_tasks: 0 });
   const [showQuitModal, setShowQuitModal] = useState(false);
 
   const confirmQuit = () => {
@@ -879,6 +884,11 @@ function App() {
       );
     });
 
+    socket.on("swarm_stats", (data) => {
+      console.log("DEBUG: Global swarm stats update", data);
+      setSwarmStats(data);
+    });
+
     socket.on("join_error", (data) => {
       console.log("DEBUG: Join error received", data);
       setJoinError(data.message);
@@ -1122,8 +1132,8 @@ function App() {
         </header>
 
         <SwarmMonitor 
-          swarmSize={activeParticipants?.length || 5} 
-          activeTasks={(activeParticipants || []).filter(p => p && p.action === "thinking").length} 
+          swarmSize={swarmStats.total_nodes || 1} 
+          activeTasks={swarmStats.active_tasks || 0} 
           bridgeActive={bridgeActive}
           setupCommand={isWindows ? swarmWinCmd : swarmUnixCmd}
         />
@@ -1304,7 +1314,7 @@ function App() {
               <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 max-w-5xl mx-auto">
               {FAQ_ITEMS.map((item, idx) => (
                 <div
                   key={idx}
@@ -1313,9 +1323,10 @@ function App() {
                   <h3 className="text-cyan-400 font-bold mb-2 group-hover:text-purple-300 transition-colors">
                     {item.q}
                   </h3>
-                  <p className="text-sm text-gray-400 leading-relaxed font-medium">
-                    {item.a}
-                  </p>
+                  <p 
+                    className="text-sm text-gray-400 leading-relaxed font-medium"
+                    dangerouslySetInnerHTML={{ __factory: undefined, __html: item.a }}
+                  />
                 </div>
               ))}
             </div>

@@ -22,7 +22,6 @@ const SwarmMonitor = ({
             <div className="flex items-center gap-3.5">
                <div className="relative flex items-center justify-center">
                   <Share2 size={18} className="text-blue-400" />
-                  <div className="absolute top-[2.5px] right-[3.2px] w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_12px_#22c55e] z-10" />
                </div>
                <h3 className="text-[10px] font-black text-gray-400 tracking-[0.2em] uppercase leading-none">Swarm Mesh Active</h3>
             </div>
@@ -30,7 +29,7 @@ const SwarmMonitor = ({
             
             {/* Neural Bridge Status Integrated */}
             <div className="flex items-center gap-2">
-              <div className={`w-1.5 h-1.5 rounded-full ${bridgeActive ? "bg-green-400 animate-pulse shadow-[0_0_8px_#4ade80]" : "bg-red-500 shadow-[0_0_8px_#ef4444]"}`} />
+              <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${bridgeActive ? "bg-green-400 shadow-[0_0_8px_#4ade80]" : "bg-red-500 shadow-[0_0_8px_#ef4444]"}`} />
               <span className={`text-[9px] font-black uppercase tracking-widest ${bridgeActive ? "text-green-400" : "text-red-500"}`}>
                 Neural Link: {bridgeActive ? "Online" : "Offline"}
               </span>
