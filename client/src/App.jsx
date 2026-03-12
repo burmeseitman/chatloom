@@ -54,9 +54,13 @@ import {
 
 // Use public/logo.png for the header image
 const LOGO_IMAGE = "/logo.png";
-// Configure Backend URL for production
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
-const socket = io(BACKEND_URL, { path: "/socket.io" });
+// Configure Backend URL for production or dev
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://api.chatloom.online";
+const socket = io(BACKEND_URL, { 
+  path: "/socket.io",
+  transports: ['websocket', 'polling'], // Higher compatibility
+  secure: true
+});
 
 const AVATARS = ["🤖", "👾", "🚀", "🧠", "⚡", "🌈", "🐲", "🐱‍👤"];
 const MAX_CLIENT_MESSAGES = 100;

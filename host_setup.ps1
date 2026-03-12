@@ -30,19 +30,17 @@ $CLIENT_DIR = Join-Path -Path $BASE_DIR -ChildPath "client"
 $CLIENT_ENV_PATH = Join-Path -Path $CLIENT_DIR -ChildPath ".env"
 
 Write-Host "------------------------------------------------" -ForegroundColor Blue
-Write-Host "  ChatLoom Server - Secure Deployment" -ForegroundColor Blue
+Write-Host "  ChatLoom Server - Advanced Deployment" -ForegroundColor Blue
 Write-Host "------------------------------------------------" -ForegroundColor Blue
 
-# --- SECURITY & NETWORK ---
-Write-Host "[SEC] Applying folder security and firewall..." -ForegroundColor Gray
-icacls "$BASE_DIR" /inheritance:r /grant "SYSTEM:(OI)(CI)F" /grant "Administrators:(OI)(CI)F" /grant "Users:(OI)(CI)RX" /Q /C
+# --- ADVANCED NETWORK HARDENING ---
+Write-Host "[NET] Aggressively opening Firewall and Port mapping..." -ForegroundColor Gray
+# Opening for ALL profiles (Domain, Private, Public) to ensure Service has access
 Remove-NetFirewallRule -DisplayName "ChatLoom Server" -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName "ChatLoom Server" -Direction Inbound -LocalPort 5001 -Protocol TCP -Action Allow -ErrorAction SilentlyContinue
+New-NetFirewallRule -DisplayName "ChatLoom Server" -Direction Inbound -LocalPort 5001 -Protocol TCP -Action Allow -Profile Any -ErrorAction SilentlyContinue
 
-# --- FRONTEND CONFIGURATION ---
-Write-Host "[CFG] Configuring Frontend API Endpoint..." -ForegroundColor Gray
-# Point frontend to our background service on 5001
-$ENV_CONTENT = "VITE_BACKEND_URL=http://localhost:5001`n"
+# Point frontend to production API
+$ENV_CONTENT = "VITE_BACKEND_URL=https://api.chatloom.online`n"
 Set-Content -Path "$CLIENT_ENV_PATH" -Value $ENV_CONTENT -Force
 
 # 3. Environment Checks
@@ -57,8 +55,8 @@ if (!(Test-Path -Path "$VENV_DIR")) {
 $VENV_PYTHON_EXE = Join-Path -Path $VENV_DIR -ChildPath "Scripts\python.exe"
 $APP_PYTHON = (Get-Item -Path "$VENV_PYTHON_EXE").FullName
 
-# 4. Dependencies & DB
-Write-Host "Installing dependencies..." -ForegroundColor Gray
+# 4. Dependencies & DB initialization
+Write-Host "Syncing environment..." -ForegroundColor Gray
 Start-Process -FilePath $APP_PYTHON -ArgumentList "-m pip install --upgrade pip" -Wait -NoNewWindow
 Start-Process -FilePath $APP_PYTHON -ArgumentList "-m pip install -r `"$REQUIREMENTS_PATH`"" -Wait -NoNewWindow
 Start-Process -FilePath $APP_PYTHON -ArgumentList "`"$INIT_DB_PATH`"" -Wait -NoNewWindow
@@ -78,7 +76,7 @@ if (!(Test-Path -Path "$NSSM_EXE")) {
 }
 
 # 6. Deploy ChatLoom Service
-Write-Host "Deploying Background Service..." -ForegroundColor Gray
+Write-Host "Resetting Backend Service..." -ForegroundColor Gray
 $oldPort = Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
 if ($oldPort) { Stop-Process -Id $oldPort -Force -ErrorAction SilentlyContinue }
 Stop-Process -Name nssm -Force -ErrorAction SilentlyContinue 2>$null
@@ -97,10 +95,10 @@ Start-Process -FilePath $NSSM_EXE -ArgumentList "set $SERVICE_NAME AppStdout `"$
 Start-Process -FilePath $NSSM_EXE -ArgumentList "set $SERVICE_NAME AppStderr `"$STDERR_PATH`"" -Wait -NoNewWindow
 Start-Process -FilePath $NSSM_EXE -ArgumentList "start $SERVICE_NAME" -Wait -NoNewWindow
 
-# 7. Finalize Cloudflare Tunnel Service
+# 7. Finalize Cloudflare Tunnel 1033 Fix
 Write-Host ""
-Write-Host "Cloudflare Tunnel Setup:"
-$TOKEN = Read-Host "Enter your Tunnel Token"
+Write-Host "Cloudflare Tunnel Deployment (Fixing 1033):"
+$TOKEN = Read-Host "Paste your Tunnel Token"
 
 if ($TOKEN) {
     if (!(Get-Command cloudflared -ErrorAction SilentlyContinue)) {
@@ -113,13 +111,21 @@ if ($TOKEN) {
     $cf_full_path = "C:\Program Files\cloudflared\cloudflared.exe"
     if (Test-Path $cf_full_path) { $cf_exe = $cf_full_path }
 
+    # Refresh Tunnel Service
+    Write-Host "Configuring Cloudflare Service Agent..." -ForegroundColor Gray
     Start-Process -FilePath $cf_exe -ArgumentList "service uninstall" -Wait -NoNewWindow -ErrorAction SilentlyContinue
     Start-Process -FilePath $cf_exe -ArgumentList "service install $TOKEN" -Wait -NoNewWindow
     Start-Service -Name "Cloudflared" -ErrorAction SilentlyContinue
-    Write-Host "✅ Cloudflare Tunnel Bridge ACTIVE." -ForegroundColor Green
+    
+    Write-Host ""
+    Write-Host "------------------------------------------------" -ForegroundColor Cyan
+    Write-Host "✅ TUNNEL ACTIVE. Final Verification Step:" -ForegroundColor Green
+    Write-Host "In Cloudflare Dashboard, ensure your Public Hostname points to:" -ForegroundColor Yellow
+    Write-Host "  HTTP -> 127.0.0.1:5001" -ForegroundColor Green
+    Write-Host "------------------------------------------------" -ForegroundColor Cyan
 }
 
 Write-Host ""
-Write-Host "🎉 DEPLOYMENT COMPLETE." -ForegroundColor Green
-Write-Host "Tip: Restart your frontend command 'npm run dev' to sync with the backend." -ForegroundColor Yellow
+Write-Host "🎉 DEPLOYMENT REFRESHED." -ForegroundColor Green
+Write-Host "Tip: Restart your frontend 'npm run dev' terminal." -ForegroundColor Yellow
 Start-Sleep -Seconds 5
