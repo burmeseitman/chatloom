@@ -171,7 +171,9 @@ function App() {
   const [selectedTopic, setSelectedTopic] = useState(
     () => localStorage.getItem("chat_room") || null,
   );
-  const [models, setModels] = useState([]);
+  const [models, setModels] = useState(
+    () => JSON.parse(localStorage.getItem("chat_models")) || [],
+  );
   const [selectedModel, setSelectedModel] = useState(
     () => JSON.parse(localStorage.getItem("chat_model")) || null,
   );
@@ -188,7 +190,9 @@ function App() {
   const [categories, setCategories] = useState(["All"]);
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [status, setStatus] = useState("Exploring topics...");
-  const [bridgeActive, setBridgeActive] = useState(false);
+  const [bridgeActive, setBridgeActive] = useState(
+    () => models.length > 0
+  );
   const [showQuitModal, setShowQuitModal] = useState(false);
 
   const confirmQuit = () => {
@@ -217,6 +221,12 @@ function App() {
       localStorage.setItem("chat_model", JSON.stringify(selectedModel));
     }
   }, [selectedModel]);
+
+  useEffect(() => {
+    if (models.length > 0) {
+      localStorage.setItem("chat_models", JSON.stringify(models));
+    }
+  }, [models]);
 
   const [newPersona, setNewPersona] = useState({
     name: "",
@@ -250,7 +260,7 @@ function App() {
           const bridgedModels = res.data.models.map((m) => ({
             name: m.name,
             parameter_size: m.parameter_size,
-            origin: "Neural Link (Bridged)",
+            origin: "Neural Link",
           }));
           
           setModels(bridgedModels);
@@ -260,20 +270,18 @@ function App() {
             setSelectedModel(bridgedModels[0]);
           }
 
-          // If we are waiting on the detection screen, jump to setup automatically
           if (step === "detect") {
             setStep("setup");
             fetchPersonas();
           }
         } else {
-          setBridgeActive(false);
-          if (models.length > 0) setModels([]);
+          // Only de-activate if we are sure it's offline (e.g. repeated failure)
+          // setBridgeActive(false); 
         }
       } catch (e) {
-        setBridgeActive(false);
-        if (models.length > 0) setModels([]);
+        // Silent
       }
-    }, 3000);
+    }, 4000);
     return () => clearInterval(interval);
   }, [step, sessionId, models.length]);
 
@@ -698,7 +706,7 @@ function App() {
           setStatus("Scanning your local AI engine...");
           const localRes = await axios.get(target, { timeout: 5000, signal });
           if (localRes.data?.models) {
-            const mod = processModels(localRes.data.models, "Local PC");
+            const mod = processModels(localRes.data.models, "Neural Link");
             if (mod.length > 0) {
               console.log(
                 `DEBUG: ✅ ${mod.length} models found via direct access`,
@@ -735,7 +743,7 @@ function App() {
             const mapped = bridgeRes.data.models.map((m) => ({
               name: m.name,
               parameter_size: m.parameter_size,
-              origin: bridgeRes.data.origin || "Neural Link (Bridged)",
+              origin: "Neural Link",
             }));
             console.log(
               `DEBUG: ✅ Bridge success with ${mapped.length} models`,
@@ -1011,6 +1019,7 @@ function App() {
   };
 
   const apiBase = BACKEND_URL || window.location.origin;
+  const isWindows = navigator.userAgent.toLowerCase().includes("win") || navigator.platform.toLowerCase().includes("win");
   const swarmUnixCmd = `curl -sSL ${apiBase}/setup/unix/${sessionId} | bash`;
   const swarmWinCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${apiBase}/setup/windows/${sessionId} | iex"`;
 
@@ -1082,9 +1091,9 @@ function App() {
                     handleTopicClick(selectedTopic || "General Chat");
                   }
                 }}
-                className={`px-5 py-2.5 rounded-xl transition-all font-black text-[10px] uppercase tracking-[0.3em] flex items-center gap-2 shadow-lg group border bg-white/5 hover:bg-white/10 text-gray-200 border-white/10`}
+                className={`px-5 py-2.5 rounded-xl transition-all font-black text-[10px] uppercase tracking-[0.3em] flex items-center gap-2 shadow-lg group border bg-white/5 hover:bg-white/10 text-[var(--irc-text)] border-white/10`}
               >
-                <Settings size={14} className="group-hover:rotate-90 transition-transform duration-500" />
+                <Settings size={14} className="group-hover:rotate-90 transition-transform duration-500 text-cyan-400" />
                 Node Dashboard
               </button>
             </div>
@@ -1095,7 +1104,7 @@ function App() {
           swarmSize={activeParticipants?.length || 5} 
           activeTasks={(activeParticipants || []).filter(p => p && p.action === "thinking").length} 
           bridgeActive={bridgeActive}
-          setupCommand={swarmUnixCmd}
+          setupCommand={isWindows ? swarmWinCmd : swarmUnixCmd}
         />
 
         <div className="px-4 md:px-8 w-full flex flex-col items-center pt-20 pb-12">
@@ -1368,7 +1377,7 @@ function App() {
               </div>
 
               <div className="space-y-4">
-                {(navigator.userAgent.toLowerCase().includes("win") || navigator.platform.toLowerCase().includes("win")) ? (
+                {isWindows ? (
                   <div className="group relative">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 flex items-center gap-2">
@@ -1968,11 +1977,15 @@ function App() {
                     {p.name}
                   </p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[6px] px-1 bg-blue-500/20 text-cyan-400 rounded-sm font-black uppercase tracking-widest border border-purple-500/30">
-                      AI Agent
+                    <span className={`text-[6px] px-1 rounded-sm font-black uppercase tracking-widest border ${
+                      p.name.includes("_node") || p.model 
+                      ? "bg-blue-500/20 text-cyan-400 border-purple-500/30" 
+                      : "bg-green-500/10 text-green-400 border-green-500/20"
+                    }`}>
+                      {p.name.includes("_node") || p.model ? "AI Agent" : "Guardian"}
                     </span>
                     <p className="text-[8px] text-gray-600 truncate tracking-widest uppercase">
-                      {p.model}
+                      {p.model || "Brain Operator"}
                     </p>
                   </div>
                 </div>
