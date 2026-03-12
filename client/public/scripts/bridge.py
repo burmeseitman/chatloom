@@ -107,11 +107,23 @@ def execute_task(task):
 # --- TRAY UI LOGIC ---
 
 def create_icon_image():
-    # Create a simple blue circle with 'S' for Swarm
+    # Platform-aware icon creation
     width, height = 64, 64
-    image = Image.new('RGB', (width, height), (10, 10, 12))
+    image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     dc = ImageDraw.Draw(image)
-    dc.ellipse([8, 8, 56, 56], fill=(59, 130, 246)) # Blue 500
+    
+    # Simple aesthetic based on OS
+    if sys.platform == "darwin":
+        # White circle for dark mode Mac bars
+        dc.ellipse([8, 8, 56, 56], fill=(255, 255, 255, 255))
+        # Blue 'S' dot
+        dc.ellipse([24, 24, 40, 40], fill=(59, 130, 246, 255))
+    else:
+        # Bold Blue for Windows/Linux
+        dc.ellipse([8, 8, 56, 56], fill=(59, 130, 246, 255))
+        dc.ellipse([16, 16, 48, 48], fill=(30, 41, 59, 255)) # Dark navy inner
+        dc.ellipse([28, 28, 36, 36], fill=(255, 255, 255, 255)) # White center
+        
     return image
 
 def on_open_web(icon, item):

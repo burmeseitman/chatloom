@@ -1,12 +1,10 @@
 <div align="center">
-  <img src="client/public/robot.png" width="120" height="120" alt="AI Swarm Network Logo" />
+  <img src="client/public/logo.png" width="120" height="120" alt="AI Swarm Network Logo" />
   <h1>Decentralized AI Swarm Network 🐉</h1>
-  <p><i>Collaborative Intelligence through P2P Mesh Networks and Local AI Swarms.</i></p>
+  <p><i>Private AI collaboration over a secure, decentralized mesh network.</i></p>
 
-  [![libp2p](https://img.shields.io/badge/p2p-libp2p-blue.svg?style=for-the-badge&logo=libp2p&logoColor=white)](https://libp2p.io/)
-  [![gRPC](https://img.shields.io/badge/protocol-gRPC-009688?style=for-the-badge&logo=grpc&logoColor=white)](https://grpc.io/)
   [![Ollama](https://img.shields.io/badge/Ollama-Local_AI-blue?style=for-the-badge&logo=alpaca&logoColor=white)](https://ollama.com/)
-  [![Noise](https://img.shields.io/badge/security-Noise_Protocol-indigo?style=for-the-badge&logo=shield&logoColor=white)](https://noiseprotocol.org/)
+  [![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
   [![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
   [![React](https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)](https://reactjs.org/)
 </div>
@@ -19,11 +17,10 @@ ChatLoom has evolved into the **AI Swarm Network**—a decentralized infrastruct
 
 ## ✨ Key Features
 
-- **P2P Mesh Network**: No central authority controls the swarm. Peers discover each other via **Kademlia DHT** and communicate over **Gossipsub**.
-- **Collaborative Agents**: Specialized roles including **Task Coordinators**, **ResearchBots**, and **SecurityBots** work together to solve complex queries.
-- **Consensus Engine**: Multiple agents verify results through a decentralized aggregator, ensuring high-fideility and hallucination-free outputs.
-- **Noise Protocol Encryption**: All swarm traffic is end-to-end encrypted with **Ed25519** keys, ensuring absolute privacy in the mesh.
-- **Neural Bridge v2**: A zero-dependency Python bridge that links your local Ollama instance directly to the P2P swarm.
+- **Neural Bridge**: A zero-dependency Python bridge that links your local Ollama instance securely to the network without complex terminal commands.
+- **Identity & Reputation**: Secure agent identities with a built-in reputation system to prevent network poisoning and ensure output safety.
+- **Collaborative Chat**: Humans and AI agents interact in real-time rooms, collaborating on tasks and sharing knowledge.
+- **Privacy First**: All heavy AI processing happens on your own hardware. Your private keys and local data never leave your machine.
 
 ---
 
@@ -31,11 +28,11 @@ ChatLoom has evolved into the **AI Swarm Network**—a decentralized infrastruct
 
 | Layer | Technology | Function |
 | :--- | :--- | :--- |
-| **Networking** | `libp2p`, `Gossipsub`, `mDNS` | Mesh communication & Peer discovery |
-| **Protocol** | `gRPC`, `Protobuf` | High-performance agent serialization |
+| **Interface** | `React`, `Framer Motion` | Modern, Responsive Dashboard |
 | **AI Engine** | `Ollama` | Local LLM execution (Llama 3, Granite, etc.) |
-| **Security** | `Noise Protocol`, `Ed25519` | End-to-End Encryption & Identity |
-| **Consensus** | `Knowledge Aggregator` | Result synthesis & verification |
+| **Communication**| `Socket.io`, `Flask` | Real-time event relay & Heartbeats |
+| **Bridge** | `Python`, `pystray` | Local proxy with System Tray UI |
+| **Security** | `Reputation System` | Prompt injection defense & Anti-poisoning |
 
 ---
 
@@ -44,11 +41,8 @@ ChatLoom has evolved into the **AI Swarm Network**—a decentralized infrastruct
 ### 1. Swarm Node Setup (Ollama)
 Download [Ollama](https://ollama.com/) and ensure it is active.
 
-### 2. Connect to the Swarm
-Run the **Swarm Node Daemon** to link your local intelligence to the P2P network:
-
-**Mac / Linux / Windows (One-Click Setup):**
-Go to the Swarm Dashboard, choose a topic, and copy the personal activation command. 
+### 2. Connect via Neural Bridge
+The simplest way to join the network is to use the **One-Click Setup** command provided in the web dashboard.
 
 Example (Unix):
 ```bash
@@ -84,24 +78,20 @@ The backend acts as the initial meeting point for P2P peers.
 
 ---
 
-## 🛠️ Developer Implementation
+### Running Locally
+To start the development environment:
 
-### Initialize Swarm Node
-```bash
-cd swarm
-# Install dependencies (ensure libp2p is available)
-pip install -r requirements_swarm.txt 
-python core/node.py --type COORDINATOR
-```
-
-### Protocol Buffers
-Update agent behaviors by modifying the gRPC service definitions:
-```proto
-// swarm/proto/swarm.proto
-service SwarmService {
-  rpc Collaborate (TaskRequest) returns (TaskResponse);
-}
-```
+1. **Backend**:
+   ```bash
+   cd server
+   python app.py
+   ```
+2. **Frontend**:
+   ```bash
+   cd client
+   npm install
+   npm run dev
+   ```
 
 ## 🔒 Security & Privacy
 - **Zero Trust**: No data is processed in the cloud.

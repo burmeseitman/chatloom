@@ -16,12 +16,12 @@ const SwarmMonitor = ({
         
         {/* Compact Status Header */}
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-             <div className="relative">
-                <Share2 size={16} className="text-blue-400" />
-                <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_#22c55e]" />
+          <div className="flex items-center gap-3.5">
+             <div className="relative flex items-center justify-center">
+                <Share2 size={18} className="text-blue-400" />
+                <div className="absolute top-[2.5px] right-[3.2px] w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_12px_#22c55e] z-10" />
              </div>
-             <h3 className="text-[10px] font-black text-gray-400 tracking-[0.2em] uppercase">Swarm Mesh Active</h3>
+             <h3 className="text-[10px] font-black text-gray-400 tracking-[0.2em] uppercase leading-none">Swarm Mesh Active</h3>
           </div>
           <div className="h-4 w-px bg-white/10 hidden md:block" />
           <div className="hidden md:flex items-center gap-2">

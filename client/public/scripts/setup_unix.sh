@@ -9,7 +9,7 @@ UNAME_S=$(uname -s)
 UNAME_M=$(uname -m)
 
 echo "------------------------------------------"
-echo " 🐉 Initializing AI Swarm Node..."
+echo " 🐉 Initializing AI Swarm Node ($UNAME_S)..."
 echo "------------------------------------------"
 
 # 1. Check for Ollama
@@ -104,12 +104,16 @@ if [ ! -f "/tmp/chatloom_bridge.py" ]; then
     exit 1
 fi
 
-# 8. Install UI Dependencies (Optional but Recommended)
-echo "🎨 Optimizing UI Experience..."
-python3 -m pip install pystray pillow --quiet 2>/dev/null || true
+# 8. Install UI Dependencies in a Virtual Environment
+echo "🎨 Optimizing UI Experience (System Tray)..."
+BRIDGE_DIR="/tmp/chatloom_bridge"
+mkdir -p "$BRIDGE_DIR"
+python3 -m venv "$BRIDGE_DIR/venv"
+source "$BRIDGE_DIR/venv/bin/activate"
+pip install pystray pillow --quiet 2>/dev/null || true
 
 echo "🚀 BRIDGE STARTING (Tray Mode)..."
 echo "------------------------------------------"
-# Execute bridge.py in background if possible, or direct
+# Execute bridge.py inside the virtual environment
 python3 /tmp/chatloom_bridge.py "$SESSION_ID" "$API_URL"
 

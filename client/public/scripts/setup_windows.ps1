@@ -95,19 +95,27 @@ if (!(Test-Path $bridgePath)) {
     Exit 1
 }
 
-# 8. Install UI Dependencies
-Write-Host "🎨 Optimizing UI Experience..." -ForegroundColor Gray
-& $pyCmd -m pip install pystray pillow --quiet 2>$null
+# 8. Install UI Dependencies in a Virtual Environment
+Write-Host "🎨 Optimizing UI Experience (System Tray)..." -ForegroundColor Gray
+$venvDir = "$env:TEMP\chatloom_venv"
+if (!(Test-Path $venvDir)) {
+    & $pyCmd -m venv $venvDir
+}
+$venvPy = "$venvDir\Scripts\python.exe"
+$venvPyw = "$venvDir\Scripts\pythonw.exe"
+
+# Install dependencies into venv
+& $venvPy -m pip install pystray pillow --quiet
 
 Write-Host "🚀 BRIDGE STARTING (Tray Mode)..." -ForegroundColor Green
 Write-Host "------------------------------------------"
+
 # Execute bridge.py using pythonw (if available) to hide terminal
-$pywCmd = (Get-Command pythonw -ErrorAction SilentlyContinue).Source
-if ($pywCmd) {
-    Start-Process $pywCmd -ArgumentList "$bridgePath `"$SESSION_ID`" `"$API_URL`""
+if (Test-Path $venvPyw) {
+    Start-Process $venvPyw -ArgumentList "$bridgePath `"$SESSION_ID`" `"$API_URL`""
     Write-Host "✅ Node is now running in your notification bar!" -ForegroundColor Green
     Start-Sleep -Seconds 2
 } else {
-    & $pyCmd $bridgePath "$SESSION_ID" "$API_URL"
+    & $venvPy $bridgePath "$SESSION_ID" "$API_URL"
 }
 

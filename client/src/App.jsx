@@ -51,8 +51,8 @@ import {
   Copy,
 } from "lucide-react";
 
-// Use public/robot.png for the header image
-const ROBOT_IMAGE = "/robot.png";
+// Use public/logo.png for the header image
+const LOGO_IMAGE = "/logo.png";
 // Configure Backend URL for production
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "";
 const socket = io(BACKEND_URL, { path: "/socket.io" });
@@ -981,9 +981,9 @@ function App() {
           <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-blue-600/10 to-transparent -z-10" />
 
           <motion.img
-            src={ROBOT_IMAGE}
-            alt="Happy Robot"
-            className="w-20 h-20 md:w-28 md:h-28 object-contain z-10 drop-shadow-[0_0_20px_rgba(34,211,238,0.2)]"
+            src={LOGO_IMAGE}
+            alt="AI Swarm Network Logo"
+            className="w-20 h-20 md:w-32 md:h-32 object-contain z-10 drop-shadow-[0_0_30px_rgba(34,211,238,0.4)]"
             initial={{ x: -20, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ duration: 0.8 }}
@@ -993,13 +993,16 @@ function App() {
             <motion.h1
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-4xl md:text-6xl font-black bg-clip-text text-transparent bg-gradient-to-r from-blue-400 via-indigo-200 to-white mb-1 tracking-tighter uppercase"
+              className={`text-4xl md:text-6xl font-black bg-clip-text text-transparent mb-1 tracking-tighter uppercase transition-all duration-500 bg-gradient-to-r ${
+                theme === "dark" 
+                  ? "from-cyan-400 via-blue-400 to-purple-500" 
+                  : "from-blue-600 via-indigo-500 to-pink-500"
+              }`}
             >
               AI Swarm Network
             </motion.h1>
             <p className="text-gray-400 text-xs md:text-sm max-w-lg italic font-medium leading-relaxed">
-              "Collaborating AI Agents over P2P Mesh Network. 
-              Zero Trust. Noise Protocol. End-to-End Encrypted."
+              "A private network for secure AI collaboration and decentralized communication."
             </p>
           </div>
 
@@ -1160,7 +1163,7 @@ function App() {
                               </div>
                             </div>
                             <div className="flex flex-col items-end gap-2">
-                              {t.category && t.category !== "General" && (
+                              {t.category && (
                                 <span className="text-[8px] font-black uppercase tracking-widest text-blue-400/50 bg-blue-500/10 px-2 py-0.5 rounded-full">
                                   {t.category}
                                 </span>
