@@ -231,25 +231,31 @@ function App() {
   // Bridge Status Polling — check if user's bridge.py is active
   useEffect(() => {
     const interval = setInterval(async () => {
+      // Don't poll if we are actively running the manual detection loop in handleTopicClick
       if (isDetectingRef.current) return;
+      
       try {
         const res = await axios.get(
           `${BACKEND_URL}/api/bridge/status/${sessionId}`,
         );
-        if (
-          res.data.active &&
-          res.data.models?.length > 0 &&
-          step === "detect"
-        ) {
-          console.log(
-            `DEBUG: Bridge active with ${res.data.models.length} models`,
-          );
-          if (!isDetectingRef.current) {
-            const targetTopic =
-              selectedTopic ||
-              localStorage.getItem("chat_room") ||
-              "General Chat";
-            handleTopicClick(targetTopic);
+        
+        if (res.data.active && res.data.models?.length > 0) {
+          const bridgedModels = res.data.models.map((m) => ({
+            name: m.name,
+            parameter_size: m.parameter_size,
+            origin: "Neural Link (Bridged)",
+          }));
+          
+          setModels(bridgedModels);
+          if (bridgedModels.length > 0 && !selectedModel) {
+            setSelectedModel(bridgedModels[0]);
+          }
+
+          // If we are waiting on the detection screen, jump to setup automatically
+          if (step === "detect") {
+            console.log(`DEBUG: Bridge auto-detected with ${bridgedModels.length} models. Transitioning to setup.`);
+            setStep("setup");
+            fetchPersonas();
           }
         }
       } catch (e) {
@@ -257,7 +263,7 @@ function App() {
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [step, sessionId, selectedTopic]);
+  }, [step, sessionId]);
 
   const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
@@ -626,11 +632,13 @@ function App() {
 
     const done = (models, step = "setup") => {
       const savedName = localStorage.getItem("chat_name");
+      const savedModel = localStorage.getItem("chat_model");
       setModels(models);
-      // Skip setup if user already has a nickname saved
-      if (savedName && name) {
+      
+      // Auto-join ONLY if we have both identity AND a valid model saved
+      if (savedName && name && savedModel && models.length > 0) {
         setStep("chat");
-        handleJoin(); // Auto-join with existing config
+        handleJoin(); 
       } else {
         setStep(step);
       }
@@ -1027,22 +1035,35 @@ function App() {
                 {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
               </button>
             </div>
-            <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-pink-500/30">
-              <Cpu size={14} className="text-cyan-400 shrink-0" />
-              <code
-                className="text-[10px] font-mono text-gray-400 truncate flex-1"
-                title={swarmUnixCmd}
-              >
-                {swarmUnixCmd}
-              </code>
+            <div className="flex flex-col sm:flex-row items-center gap-2">
+              <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-xl px-3 py-1.5 min-w-[300px] max-w-md group transition-all hover:border-pink-500/30">
+                <Cpu size={14} className="text-cyan-400 shrink-0" />
+                <code
+                  className="text-[10px] font-mono text-gray-400 truncate flex-1"
+                  title={swarmUnixCmd}
+                >
+                  {swarmUnixCmd}
+                </code>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(swarmUnixCmd);
+                  }}
+                  className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
+                  title="Copy Bridge command"
+                >
+                  <Copy size={13} />
+                </button>
+              </div>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(swarmUnixCmd);
+                  setStep("detect");
+                  setIsDetecting(false); 
+                  handleTopicClick(selectedTopic || "General Chat");
                 }}
-                className="p-1 hover:bg-white/10 rounded-lg transition-all text-gray-500 hover:text-white"
-                title="Copy Bridge command"
+                className="px-5 py-2.5 bg-gradient-to-r from-blue-600/20 to-purple-600/20 hover:from-blue-600/30 hover:to-purple-600/30 text-cyan-400 border border-blue-500/30 rounded-xl transition-all font-black text-[10px] uppercase tracking-[0.2em] flex items-center gap-2 shadow-lg shadow-blue-500/5 group"
               >
-                <Copy size={13} />
+                <Settings size={14} className="group-hover:rotate-90 transition-transform duration-500" />
+                Configure Node
               </button>
             </div>
           </motion.div>
@@ -1401,9 +1422,18 @@ function App() {
             <div className="flex flex-col gap-3">
               <button
                 onClick={() => handleTopicClick(selectedTopic)}
-                className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl font-black text-sm shadow-lg shadow-blue-900/30 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2"
+                className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl font-black text-sm shadow-lg shadow-blue-900/30 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-white"
               >
                 <RefreshCw size={18} /> RETRY CONNECTION
+              </button>
+              <button
+                onClick={() => {
+                  setStep("setup");
+                  fetchPersonas();
+                }}
+                className="w-full py-4 bg-blue-500/10 hover:bg-blue-500/20 text-cyan-400 border border-blue-500/20 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
+              >
+                Proceed to Setup Manually
               </button>
               <button
                 onClick={() => setStep("topics")}

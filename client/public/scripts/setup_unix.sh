@@ -114,6 +114,20 @@ pip install pystray pillow --quiet 2>/dev/null || true
 
 echo "🚀 BRIDGE STARTING (Tray Mode)..."
 echo "------------------------------------------"
-# Execute bridge.py inside the virtual environment
-python3 /tmp/chatloom_bridge.py "$SESSION_ID" "$API_URL"
+# Execute bridge.py inside the virtual environment in background
+nohup python3 /tmp/chatloom_bridge.py "$SESSION_ID" "$API_URL" > /dev/null 2>&1 &
 
+echo ""
+echo "✅ SUCCESS! Neural Node is now active in your menu bar."
+echo "🎨 Look for the ChatLoom icon 🐉 near your system clock."
+echo "🚪 Closing this window in 3 seconds..."
+
+sleep 3
+
+# Close terminal on macOS
+if [[ "$UNAME_S" == "Darwin" ]]; then
+    osascript -e 'tell application "Terminal" to close front window' > /dev/null 2>&1 &
+    osascript -e 'tell application "iTerm" to close front window' > /dev/null 2>&1 &
+fi
+
+exit 0
