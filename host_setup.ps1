@@ -4,10 +4,14 @@
 # This script automates the deployment of ChatLoom as a 
 # Windows Service for 24/7 VPS-like hosting.
 
+# Enable TLS 1.2/1.3 for modern mirrors
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+
 # 1. Elevate to Administrator
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Elevating to Administrator..." -ForegroundColor Cyan
     $currentScript = $MyInvocation.MyCommand.Definition
+    if ([string]::IsNullOrEmpty($currentScript)) { $currentScript = $MyInvocation.MyCommand.Path }
     Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$currentScript`"" -Verb RunAs
     exit
 }
@@ -67,21 +71,22 @@ if (!(Test-Path -Path "$NSSM_EXE")) {
     $nssm_zip = Join-Path -Path $BIN_DIR -ChildPath "nssm.zip"
     $nssm_temp = Join-Path -Path $BIN_DIR -ChildPath "nssm_temp"
     
-    # Mirror list in case official site is down (503 error)
+    # Extensive mirror list including direct build links
     $mirrors = @(
         "https://github.com/fawno/nssm.cc/releases/download/v2.24/nssm-2.24.zip",
-        "https://nssm.cc/release/nssm-2.24.zip"
+        "https://nssm.cc/release/nssm-2.24.zip",
+        "https://web.archive.org/web/20230501120000/https://nssm.cc/release/nssm-2.24.zip" # Archive mirror
     )
 
     $success = $false
     foreach ($url in $mirrors) {
         try {
-            Write-Host "Downloading NSSM from: $url" -ForegroundColor Gray
+            Write-Host "Attempting download from: $url" -ForegroundColor Gray
             Invoke-WebRequest -Uri $url -OutFile "$nssm_zip" -UseBasicParsing -ErrorAction Stop
             $success = $true
             break
         } catch {
-            Write-Host "Mirror failed: $url" -ForegroundColor Yellow
+            Write-Host "Mirror unreachable: $($_.Exception.Message)" -ForegroundColor Yellow
         }
     }
 
@@ -89,22 +94,37 @@ if (!(Test-Path -Path "$NSSM_EXE")) {
         Write-Host "Extracting NSSM..." -ForegroundColor Gray
         Expand-Archive -Path "$nssm_zip" -DestinationPath "$nssm_temp" -Force
         
-        # Search for the 64-bit exe in the extracted files (structure might vary by mirror)
         $extracted_exe = Get-ChildItem -Path "$nssm_temp" -Recurse -Filter "nssm.exe" | Where-Object { $_.FullName -match "win64" } | Select-Object -First 1
         if ($extracted_exe) {
             Copy-Item -Path $extracted_exe.FullName -Destination "$NSSM_EXE" -Force
             Write-Host "NSSM installed successfully." -ForegroundColor Green
         } else {
-            Write-Host "Error: Could not find nssm.exe in the downloaded package." -ForegroundColor Red
-            exit
+            # Fallback for structure differences
+            $any_exe = Get-ChildItem -Path "$nssm_temp" -Recurse -Filter "nssm.exe" | Select-Object -First 1
+            if ($any_exe) { 
+                Copy-Item -Path $any_exe.FullName -Destination "$NSSM_EXE" -Force 
+                Write-Host "NSSM installed (fallback version)." -ForegroundColor Green
+            } else {
+                Write-Host "Error: Could not find nssm.exe in the downloaded package." -ForegroundColor Red
+                exit
+            }
         }
         
         Remove-Item -Path "$nssm_temp" -Recurse -Force
         Remove-Item -Path "$nssm_zip" -Force
     } else {
-        Write-Host "Error: Failed to download NSSM from all available mirrors. Please download it manually and place it in $BIN_DIR\nssm.exe" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "❌ FATAL: Failed to auto-download NSSM." -ForegroundColor Red
+        Write-Host "Please follow these manual steps:" -ForegroundColor White
+        Write-Host "1. Download NSSM zip from: https://nssm.cc/builds" -ForegroundColor Cyan
+        Write-Host "2. Extract it and find 'nssm.exe' (Win64 version)." -ForegroundColor Gray
+        Write-Host "3. Create a folder named '.bin' in: $BASE_DIR" -ForegroundColor Gray
+        Write-Host "4. Paste 'nssm.exe' into that folder." -ForegroundColor Gray
+        Write-Host "5. RE-RUN THIS SCRIPT." -ForegroundColor White
         exit
     }
+} else {
+    Write-Host "✅ Found NSSM in .bin folder, skipping download." -ForegroundColor Green
 }
 
 # 7. Setup ChatLoom Server Service
