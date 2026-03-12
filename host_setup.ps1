@@ -13,7 +13,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 
 $BASE_DIR = (Get-Location).Path
-$VENV_DIR = Join-Path $BASE_DIR ".venv"
+$VENV_DIR = Join-Path -Path $BASE_DIR -ChildPath ".venv"
+$REQUIREMENTS_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\requirements.txt"
+$INIT_DB_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\init_db.py"
+$APP_PY_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\app.py"
 
 Write-Host "------------------------------------------------" -ForegroundColor Blue
 Write-Host "  ChatLoom Server - One-Click Host Setup" -ForegroundColor Blue
@@ -27,33 +30,37 @@ if (!(Get-Command python -ErrorAction SilentlyContinue)) {
 }
 
 # 3. Setup Virtual Environment
-if (!(Test-Path "$VENV_DIR")) {
+if (!(Test-Path -Path "$VENV_DIR")) {
     Write-Host "Creating Virtual Environment..." -ForegroundColor Gray
     python -m venv "$VENV_DIR"
 }
-$APP_PYTHON = Join-Path $VENV_DIR "Scripts\python.exe"
+$APP_PYTHON = Join-Path -Path $VENV_DIR -ChildPath "Scripts\python.exe"
 
 # 4. Install Dependencies
 Write-Host "Installing server dependencies..." -ForegroundColor Gray
 & "$APP_PYTHON" -m pip install --upgrade pip
-& "$APP_PYTHON" -m pip install -r (Join-Path $BASE_DIR "server\requirements.txt")
+& "$APP_PYTHON" -m pip install -r "$REQUIREMENTS_PATH"
 
 # 5. Initialize Database
 Write-Host "Initializing database..." -ForegroundColor Gray
-& "$APP_PYTHON" (Join-Path $BASE_DIR "server\init_db.py")
+& "$APP_PYTHON" "$INIT_DB_PATH"
 
 # 6. Handle NSSM (Service Manager)
-$BIN_DIR = Join-Path $BASE_DIR ".bin"
-$NSSM_EXE = Join-Path $BIN_DIR "nssm.exe"
-if (!(Test-Path "$NSSM_EXE")) {
+$BIN_DIR = Join-Path -Path $BASE_DIR -ChildPath ".bin"
+$NSSM_EXE = Join-Path -Path $BIN_DIR -ChildPath "nssm.exe"
+if (!(Test-Path -Path "$NSSM_EXE")) {
     Write-Host "Setting up Service Manager (NSSM)..." -ForegroundColor Gray
-    if (!(Test-Path "$BIN_DIR")) { New-Item -ItemType Directory -Path "$BIN_DIR" -Force }
-    Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile (Join-Path $BIN_DIR "nssm.zip")
-    Expand-Archive -Path (Join-Path $BIN_DIR "nssm.zip") -DestinationPath (Join-Path $BIN_DIR "nssm_temp") -Force
+    if (!(Test-Path -Path "$BIN_DIR")) { New-Item -ItemType Directory -Path "$BIN_DIR" -Force }
+    $nssm_zip = Join-Path -Path $BIN_DIR -ChildPath "nssm.zip"
+    $nssm_temp = Join-Path -Path $BIN_DIR -ChildPath "nssm_temp"
+    
+    Invoke-WebRequest -Uri "https://nssm.cc/release/nssm-2.24.zip" -OutFile "$nssm_zip" -UseBasicParsing
+    Expand-Archive -Path "$nssm_zip" -DestinationPath "$nssm_temp" -Force
     # Pick the 64-bit version
-    Copy-Item (Join-Path $BIN_DIR "nssm_temp\nssm-2.24\win64\nssm.exe") -Destination "$NSSM_EXE"
-    Remove-Item (Join-Path $BIN_DIR "nssm_temp") -Recurse -Force
-    Remove-Item (Join-Path $BIN_DIR "nssm.zip") -Force
+    $nssm_src = Join-Path -Path $nssm_temp -ChildPath "nssm-2.24\win64\nssm.exe"
+    Copy-Item -Path "$nssm_src" -Destination "$NSSM_EXE"
+    Remove-Item -Path "$nssm_temp" -Recurse -Force
+    Remove-Item -Path "$nssm_zip" -Force
 }
 
 # 7. Setup ChatLoom Server Service
@@ -63,12 +70,15 @@ Write-Host "Configuring ChatLoom Windows Service..." -ForegroundColor Gray
 
 & "$NSSM_EXE" install ChatLoomServer "$APP_PYTHON"
 & "$NSSM_EXE" set ChatLoomServer AppDirectory "$BASE_DIR"
-& "$NSSM_EXE" set ChatLoomServer AppParameters "server/app.py"
+& "$NSSM_EXE" set ChatLoomServer AppParameters "`"$APP_PY_PATH`""
 & "$NSSM_EXE" set ChatLoomServer DisplayName "ChatLoom Swarm Server"
 & "$NSSM_EXE" set ChatLoomServer Description "High-performance AI Swarm Backend"
 & "$NSSM_EXE" set ChatLoomServer Start SERVICE_AUTO_START
-& "$NSSM_EXE" set ChatLoomServer AppStdout (Join-Path $BASE_DIR "server_out.log")
-& "$NSSM_EXE" set ChatLoomServer AppStderr (Join-Path $BASE_DIR "server_err.log")
+
+$STDOUT_PATH = Join-Path -Path $BASE_DIR -ChildPath "server_out.log"
+$STDERR_PATH = Join-Path -Path $BASE_DIR -ChildPath "server_err.log"
+& "$NSSM_EXE" set ChatLoomServer AppStdout "$STDOUT_PATH"
+& "$NSSM_EXE" set ChatLoomServer AppStderr "$STDERR_PATH"
 
 & "$NSSM_EXE" start ChatLoomServer
 Write-Host "ChatLoom Server is now running as a background service!" -ForegroundColor Green
@@ -83,16 +93,21 @@ Write-Host "(Get it from: zero-trust > Networks > Tunnels)"
 $TOKEN = Read-Host "Token (Enter to skip if already running)"
 
 if ($TOKEN) {
+    $cf_cmd = "cloudflared"
     if (!(Get-Command cloudflared -ErrorAction SilentlyContinue)) {
         Write-Host "Installing Cloudflare Tunnel Agent..." -ForegroundColor Gray
-        $msi_path = Join-Path $BIN_DIR "cloudflared.msi"
-        Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi" -OutFile "$msi_path"
+        $msi_path = Join-Path -Path $BIN_DIR -ChildPath "cloudflared.msi"
+        Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi" -OutFile "$msi_path" -UseBasicParsing
         Start-Process msiexec.exe -ArgumentList "/i", "`"$msi_path`"", "/quiet" -Wait
+        
+        # MSI install path - refresh current session to find it
+        $cf_path = "C:\Program Files (x86)\cloudflared\cloudflared.exe"
+        if (Test-Path $cf_path) { $cf_cmd = $cf_path }
     }
     
     Write-Host "Registering Tunnel Service..." -ForegroundColor Green
-    & cloudflared service uninstall 2>$null
-    & cloudflared service install $TOKEN
+    & $cf_cmd service uninstall 2>$null
+    & $cf_cmd service install $TOKEN
     Write-Host "Cloudflare Tunnel is now running as a service!" -ForegroundColor Green
 }
 
