@@ -49,6 +49,7 @@ import {
   Monitor,
   X,
   Copy,
+  Settings,
 } from "lucide-react";
 
 // Use public/logo.png for the header image
