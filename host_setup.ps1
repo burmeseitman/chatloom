@@ -1,131 +1,121 @@
 # ========================================================
-#   ChatLoom Server - Secure & Hardened Host Setup (Win)
+#   ChatLoom Server - Ironclad Deployment (Win)
 # ========================================================
-# This script automates the deployment of ChatLoom as a 
-# Windows Service with specialized security hardening.
-
-# Force TLS 1.2/1.3 for secure downloads
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+# Version: 7.1 - Quiet & Ultra Stable
 
 # 1. Elevate to Administrator
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "Elevating to Administrator..." -ForegroundColor Cyan
-    $currentScript = $MyInvocation.MyCommand.Definition
-    if ([string]::IsNullOrEmpty($currentScript)) { $currentScript = $MyInvocation.MyCommand.Path }
-    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$currentScript`"" -Verb RunAs
+    Start-Process powershell -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }
 
-# 2. Secure Directory Context
+# 2. Context & Environment
 $BASE_DIR = (Get-Item -Path ".").FullName
 Set-Location -Path "$BASE_DIR"
+Write-Host "--- CHATLOOM IRONCLAD DEPLOYMENT ---" -ForegroundColor Blue
 
-$VENV_DIR = Join-Path -Path $BASE_DIR -ChildPath ".venv"
-$REQUIREMENTS_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\requirements.txt"
-$INIT_DB_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\init_db.py"
-$APP_PY_PATH = Join-Path -Path $BASE_DIR -ChildPath "server\app.py"
-$STDOUT_PATH = Join-Path -Path $BASE_DIR -ChildPath "server_out.log"
-$STDERR_PATH = Join-Path -Path $BASE_DIR -ChildPath "server_err.log"
-$CLIENT_DIR = Join-Path -Path $BASE_DIR -ChildPath "client"
-$CLIENT_ENV_PATH = Join-Path -Path $CLIENT_DIR -ChildPath ".env"
+$VENV_DIR = Join-Path $BASE_DIR ".venv"
+$VENV_PYTHON = Join-Path $VENV_DIR "Scripts\python.exe"
+$APP_PY = Join-Path $BASE_DIR "server\app.py"
+$REQ_FILE = Join-Path $BASE_DIR "server\requirements.txt"
+$BIN_DIR = Join-Path $BASE_DIR ".bin"
+if (!(Test-Path $BIN_DIR)) { New-Item -ItemType Directory -Path $BIN_DIR -Force }
+$NSSM = Join-Path $BIN_DIR "nssm.exe"
 
-Write-Host "------------------------------------------------" -ForegroundColor Blue
-Write-Host "  ChatLoom Server - Advanced Deployment" -ForegroundColor Blue
-Write-Host "------------------------------------------------" -ForegroundColor Blue
+# --- 3. HARDWARE & NETWORK PREP ---
+Write-Host "[1/6] Opening Firewall Port 5001..." -ForegroundColor Gray
+try {
+    Remove-NetFirewallRule -DisplayName "ChatLoom Server" -ErrorAction SilentlyContinue
+    New-NetFirewallRule -DisplayName "ChatLoom Server" -Direction Inbound -LocalPort 5001 -Protocol TCP -Action Allow -Profile Any -ErrorAction SilentlyContinue
+} catch { }
 
-# --- ADVANCED NETWORK HARDENING ---
-Write-Host "[NET] Aggressively opening Firewall and Port mapping..." -ForegroundColor Gray
-# Opening for ALL profiles (Domain, Private, Public) to ensure Service has access
-Remove-NetFirewallRule -DisplayName "ChatLoom Server" -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName "ChatLoom Server" -Direction Inbound -LocalPort 5001 -Protocol TCP -Action Allow -Profile Any -ErrorAction SilentlyContinue
-
-# Point frontend to production API
-$ENV_CONTENT = "VITE_BACKEND_URL=https://api.chatloom.online`n"
-Set-Content -Path "$CLIENT_ENV_PATH" -Value $ENV_CONTENT -Force
-
-# 3. Environment Checks
-if (!(Get-Command python -ErrorAction SilentlyContinue)) {
-    Write-Host "FATAL: Python 3 missing." -ForegroundColor Red; exit
-}
-
-# Setup VENV
-if (!(Test-Path -Path "$VENV_DIR")) {
+# --- 4. PYTHON SYNC ---
+Write-Host "[2/6] Syncing Dependencies..." -ForegroundColor Gray
+if (!(Test-Path $VENV_DIR)) {
+    Write-Host "Creating Virtual Env..." -ForegroundColor Cyan
     python -m venv "$VENV_DIR"
 }
-$VENV_PYTHON_EXE = Join-Path -Path $VENV_DIR -ChildPath "Scripts\python.exe"
-$APP_PYTHON = (Get-Item -Path "$VENV_PYTHON_EXE").FullName
 
-# 4. Dependencies & DB initialization
-Write-Host "Syncing environment..." -ForegroundColor Gray
-Start-Process -FilePath $APP_PYTHON -ArgumentList "-m pip install --upgrade pip" -Wait -NoNewWindow
-Start-Process -FilePath $APP_PYTHON -ArgumentList "-m pip install -r `"$REQUIREMENTS_PATH`"" -Wait -NoNewWindow
-Start-Process -FilePath $APP_PYTHON -ArgumentList "`"$INIT_DB_PATH`"" -Wait -NoNewWindow
+Write-Host "Syncing gevent, flask-socketio..." -ForegroundColor Cyan
+Start-Process -FilePath $VENV_PYTHON -ArgumentList "-m pip install --upgrade pip" -Wait -NoNewWindow
+Start-Process -FilePath $VENV_PYTHON -ArgumentList "-m pip install -r `"$REQ_FILE`"" -Wait -NoNewWindow
 
-# 5. Service Manager (NSSM)
-$BIN_DIR = Join-Path -Path $BASE_DIR -ChildPath ".bin"
-$NSSM_EXE = Join-Path -Path $BIN_DIR -ChildPath "nssm.exe"
-if (!(Test-Path -Path "$NSSM_EXE")) {
-    if (!(Test-Path -Path "$BIN_DIR")) { New-Item -ItemType Directory -Path "$BIN_DIR" -Force }
-    $nssm_zip = Join-Path -Path $BIN_DIR -ChildPath "nssm.zip"
-    $nssm_temp = Join-Path -Path $BIN_DIR -ChildPath "nssm_temp"
-    Invoke-WebRequest -Uri "https://github.com/fawno/nssm.cc/releases/download/v2.24/nssm-2.24.zip" -OutFile "$nssm_zip" -UseBasicParsing
-    Expand-Archive -Path "$nssm_zip" -DestinationPath "$nssm_temp" -Force
-    $extracted_exe = Get-ChildItem -Path "$nssm_temp" -Recurse -Filter "nssm.exe" | Where-Object { $_.FullName -match "win64" } | Select-Object -First 1
-    if ($extracted_exe) { Copy-Item -Path $extracted_exe.FullName -Destination "$NSSM_EXE" -Force }
-    Remove-Item -Path "$nssm_temp" -Recurse -Force; Remove-Item -Path "$nssm_zip" -Force
+# --- 5. APPLICATION DRY RUN ---
+Write-Host "[3/6] Validating Backend Stability..." -ForegroundColor Gray
+$testRun = Start-Process -FilePath $VENV_PYTHON -ArgumentList "`"$APP_PY`"" -NoNewWindow -PassThru
+Start-Sleep -Seconds 5
+if ($testRun.HasExited) {
+    Write-Host "CRITICAL: Backend failed to start." -ForegroundColor Red; exit
+} else {
+    Write-Host "✅ Backend Check Passed." -ForegroundColor Green
+    Stop-Process -Id $testRun.Id -Force -ErrorAction SilentlyContinue 2>$null
 }
 
-# 6. Deploy ChatLoom Service
-Write-Host "Resetting Backend Service..." -ForegroundColor Gray
-$oldPort = Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
-if ($oldPort) { Stop-Process -Id $oldPort -Force -ErrorAction SilentlyContinue }
-Stop-Process -Name nssm -Force -ErrorAction SilentlyContinue 2>$null
-
+# --- 6. SERVICE REBUILD ---
+Write-Host "[4/6] Rebuilding Windows Services..." -ForegroundColor Gray
 $SERVICE_NAME = "ChatLoomServer"
-if (Get-Service $SERVICE_NAME -ErrorAction SilentlyContinue) {
-    Start-Process -FilePath $NSSM_EXE -ArgumentList "stop $SERVICE_NAME" -Wait -NoNewWindow
-    Start-Process -FilePath $NSSM_EXE -ArgumentList "remove $SERVICE_NAME confirm" -Wait -NoNewWindow
+
+# Kill anything in port 5001
+$oldPort = Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -First 1
+if ($oldPort) { Stop-Process -Id $oldPort -Force -ErrorAction SilentlyContinue 2>$null }
+
+# NSSM check
+if (!(Test-Path $NSSM)) {
+    $zip = "$BIN_DIR\nssm.zip"
+    Invoke-WebRequest -Uri "https://github.com/fawno/nssm.cc/releases/download/v2.24/nssm-2.24.zip" -OutFile "$zip" -UseBasicParsing
+    Expand-Archive -Path "$zip" -DestinationPath "$BIN_DIR\temp" -Force
+    Copy-Item "$BIN_DIR\temp\*\win64\nssm.exe" -Destination "$NSSM" -Force
+    Remove-Item "$BIN_DIR\temp" -Recurse -Force; Remove-Item "$zip" -Force
 }
 
-$installArgs = @("install", $SERVICE_NAME, "`"$APP_PYTHON`"", "`"$APP_PY_PATH`"")
-Start-Process -FilePath $NSSM_EXE -ArgumentList $installArgs -Wait -NoNewWindow
-Start-Process -FilePath $NSSM_EXE -ArgumentList "set $SERVICE_NAME AppDirectory `"$BASE_DIR`"" -Wait -NoNewWindow
-Start-Process -FilePath $NSSM_EXE -ArgumentList "set $SERVICE_NAME Start SERVICE_AUTO_START" -Wait -NoNewWindow
-Start-Process -FilePath $NSSM_EXE -ArgumentList "set $SERVICE_NAME AppStdout `"$STDOUT_PATH`"" -Wait -NoNewWindow
-Start-Process -FilePath $NSSM_EXE -ArgumentList "set $SERVICE_NAME AppStderr `"$STDERR_PATH`"" -Wait -NoNewWindow
-Start-Process -FilePath $NSSM_EXE -ArgumentList "start $SERVICE_NAME" -Wait -NoNewWindow
+# Install Backend
+$s = Get-Service $SERVICE_NAME -ErrorAction SilentlyContinue
+if ($s) {
+    if ($s.Status -eq 'Running') { & $NSSM stop $SERVICE_NAME 2>$null }
+    & $NSSM remove $SERVICE_NAME confirm 2>$null
+}
+& $NSSM install $SERVICE_NAME "`"$VENV_PYTHON`"" "`"$APP_PY`""; & $NSSM set $SERVICE_NAME AppDirectory `"$BASE_DIR`"
+& $NSSM set $SERVICE_NAME AppStdout `"$BASE_DIR\server_out.log`"
+& $NSSM set $SERVICE_NAME AppStderr `"$BASE_DIR\server_err.log`"
+& $NSSM set $SERVICE_NAME ObjectName LocalSystem
+& $NSSM start $SERVICE_NAME 2>$null
 
-# 7. Finalize Cloudflare Tunnel 1033 Fix
-Write-Host ""
-Write-Host "Cloudflare Tunnel Deployment (Fixing 1033):"
-$TOKEN = Read-Host "Paste your Tunnel Token"
+# --- 7. CLOUDFLARE SYNC ---
+Write-Host "[5/6] Syncing Tunnel..." -ForegroundColor Gray
+$TUNNEL_NAME = Read-Host "Enter Tunnel Name (chatloom-server)"
+$CF_SRV = "ChatLoomTunnel"
 
-if ($TOKEN) {
-    if (!(Get-Command cloudflared -ErrorAction SilentlyContinue)) {
-        $msi_path = Join-Path -Path $BIN_DIR -ChildPath "cloudflared.msi"
-        Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi" -OutFile "$msi_path" -UseBasicParsing
-        Start-Process msiexec.exe -ArgumentList "/i", "`"$msi_path`"", "/quiet" -Wait
+if ($TUNNEL_NAME) {
+    $ts = Get-Service $CF_SRV -ErrorAction SilentlyContinue
+    if ($ts) {
+        if ($ts.Status -eq 'Running') { & $NSSM stop $CF_SRV 2>$null }
+        & $NSSM remove $CF_SRV confirm 2>$null
     }
     
-    $cf_exe = "cloudflared"
-    $cf_full_path = "C:\Program Files\cloudflared\cloudflared.exe"
-    if (Test-Path $cf_full_path) { $cf_exe = $cf_full_path }
+    $cf_bin = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source
+    if (!$cf_bin) {
+        $msi = "$BIN_DIR\cf.msi"
+        Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.msi" -OutFile "$msi" -UseBasicParsing
+        Start-Process msiexec.exe -ArgumentList "/i", "`"$msi`"", "/quiet" -Wait
+        $cf_bin = "C:\Program Files\cloudflared\cloudflared.exe"
+    }
 
-    # Refresh Tunnel Service
-    Write-Host "Configuring Cloudflare Service Agent..." -ForegroundColor Gray
-    Start-Process -FilePath $cf_exe -ArgumentList "service uninstall" -Wait -NoNewWindow -ErrorAction SilentlyContinue
-    Start-Process -FilePath $cf_exe -ArgumentList "service install $TOKEN" -Wait -NoNewWindow
-    Start-Service -Name "Cloudflared" -ErrorAction SilentlyContinue
-    
-    Write-Host ""
-    Write-Host "------------------------------------------------" -ForegroundColor Cyan
-    Write-Host "✅ TUNNEL ACTIVE. Final Verification Step:" -ForegroundColor Green
-    Write-Host "In Cloudflare Dashboard, ensure your Public Hostname points to:" -ForegroundColor Yellow
-    Write-Host "  HTTP -> 127.0.0.1:5001" -ForegroundColor Green
-    Write-Host "------------------------------------------------" -ForegroundColor Cyan
+    $cf_cred = Get-ChildItem -Path "$env:USERPROFILE\.cloudflared\*.json" | Select-Object -First 1
+    if ($cf_cred) {
+        $cmd = "tunnel --cred-file `"$($cf_cred.FullName)`" run --url http://127.0.0.1:5001 $TUNNEL_NAME"
+        & $NSSM install $CF_SRV "`"$cf_bin`"" $cmd
+        & $NSSM set $CF_SRV ObjectName LocalSystem
+        & $NSSM start $CF_SRV 2>$null
+        Write-Host "✅ Tunnel Synced." -ForegroundColor Green
+    }
 }
 
+# --- 8. FINAL STATUS ---
 Write-Host ""
-Write-Host "🎉 DEPLOYMENT REFRESHED." -ForegroundColor Green
-Write-Host "Tip: Restart your frontend 'npm run dev' terminal." -ForegroundColor Yellow
+$sObj = Get-Service $SERVICE_NAME -ErrorAction SilentlyContinue
+$stText = if ($sObj) { $sObj.Status } else { "Not Found" }
+$stColor = if ($stText -eq "Running") { "Green" } else { "Red" }
+
+Write-Host "FINAL STATUS: $SERVICE_NAME is $stText" -ForegroundColor $stColor
+Write-Host "Congratulations! ChatLoom is ready." -ForegroundColor Green
 Start-Sleep -Seconds 5

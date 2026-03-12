@@ -77,16 +77,27 @@ def check_poisoning(session_id, text):
 # PRODUCTION CORS CONFIGURATION
 # ---------------------------
 # Allow your production frontend and any local dev instances
+# --- PRODUCTION SECURITY: STICKY CORS ---
+# Only allow your verified domains and local development
 ALLOWED_ORIGINS = [
-    "*", # For development flexibility
     "https://chatloom.online",
+    "https://www.chatloom.online",
     "https://api.chatloom.online",
     "http://localhost:5173",
-    "http://localhost:3000"
+    "http://127.0.0.1:5173"
 ]
 
-CORS(app, resources={r"/api/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent', engineio_logger=False)
+CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
+
+# Initialize SocketIO with authorized origins
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins=ALLOWED_ORIGINS, 
+    async_mode='gevent',
+    path='/socket.io',
+    logger=False, # Disable logging in production for performance
+    engineio_logger=False
+)
 
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
@@ -918,6 +929,7 @@ def handle_disconnect():
     handle_leave()
 
 if __name__ == '__main__':
-    print("--- Production Server (gevent) is running on http://0.0.0.0:5001 ---")
+    # Force bind to 0.0.0.0 to ensure Tunnel access
     http_server = WSGIServer(('0.0.0.0', 5001), app, handler_class=WebSocketHandler)
+    print("ChatLoom Backend running on http://0.0.0.0:5001")
     http_server.serve_forever()
