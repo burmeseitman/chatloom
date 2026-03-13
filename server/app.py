@@ -91,7 +91,7 @@ ALLOWED_ORIGINS = [
 def after_request(response):
     origin = request.headers.get('Origin')
     if origin:
-        if origin in ALLOWED_ORIGINS or origin.endswith('.pages.dev'):
+        if origin in ALLOWED_ORIGINS or origin.endswith('.pages.dev') or 'localhost' in origin or '127.0.0.1' in origin:
             response.headers.add('Access-Control-Allow-Origin', origin)
             response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
             response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')

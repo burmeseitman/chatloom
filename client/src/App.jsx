@@ -54,13 +54,23 @@ import {
 
 // Use public/logo.png for the header image
 const LOGO_IMAGE = "/logo.png";
-// Configure Backend URL: Use Vite env var if set (for Cloudflare Builds), 
-// fallback to hardcoded tunnel URL for absolute stability.
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://api.chatloom.online";
+// Configure Backend URL: Prioritize environment variable, then detect localhost, fallback to production.
+const getBackendUrl = () => {
+  if (import.meta.env.VITE_BACKEND_URL) return import.meta.env.VITE_BACKEND_URL;
+  if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+    return "http://localhost:5001";
+  }
+  return "https://api.chatloom.online";
+};
+
+const BACKEND_URL = getBackendUrl();
+const isSecure = BACKEND_URL.startsWith("https");
+
 const socket = io(BACKEND_URL, { 
   path: "/socket.io",
-  transports: ['websocket'],
-  secure: true,
+  transports: ['websocket', 'polling'], // Fallback to polling if websocket fails
+  secure: isSecure,
+  rejectUnauthorized: false, // Useful for self-signed certs in some tunnel setups
   reconnection: true
 });
 
