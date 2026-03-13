@@ -42,7 +42,7 @@ if (Test-Path $VENV_PYTHON) {
 } else { $venvBroken = $true }
 
 if ($venvBroken) {
-    Write-Host "🔧 Rebuilding Virtual Environment (Paths updated)..." -ForegroundColor Cyan
+    Write-Host "Rebuilding virtual environment (paths updated)..." -ForegroundColor Cyan
     if (Test-Path $VENV_DIR) { Remove-Item -Path $VENV_DIR -Recurse -Force -ErrorAction SilentlyContinue }
     python -m venv "$VENV_DIR"
 }
@@ -53,13 +53,13 @@ Write-Host "Syncing libraries (gevent, flask, etc.)..." -ForegroundColor Cyan
 
 # --- 5. APPLICATION DRY RUN ---
 Write-Host "[3/6] Validating Backend Stability..." -ForegroundColor Gray
-$testRun = Start-Process -FilePath $VENV_PYTHON -ArgumentList """$APP_PY""" -NoNewWindow -PassThru
+$testRun = Start-Process -FilePath $VENV_PYTHON -ArgumentList ('"{0}"' -f $APP_PY) -NoNewWindow -PassThru
 Start-Sleep -Seconds 5
 if ($testRun.HasExited) {
-    Write-Host "❌ CRITICAL: Backend failed to start. Check server_out.log" -ForegroundColor Red
+    Write-Host "CRITICAL: Backend failed to start. Check server_out.log" -ForegroundColor Red
     exit
 } else {
-    Write-Host "✅ Backend Check Passed." -ForegroundColor Green
+    Write-Host "Backend check passed." -ForegroundColor Green
     Stop-Process -Id $testRun.Id -Force -ErrorAction SilentlyContinue
 }
 
@@ -89,7 +89,7 @@ if ($s) {
 
 # CRITICAL FIX: Use explicit parameters for NSSM install to avoid process creation errors
 & $NSSM install $SERVICE_NAME "$VENV_PYTHON"
-& $NSSM set $SERVICE_NAME AppParameters """$APP_PY"""
+& $NSSM set $SERVICE_NAME AppParameters ('"{0}"' -f $APP_PY)
 & $NSSM set $SERVICE_NAME AppDirectory "$BASE_DIR"
 & $NSSM set $SERVICE_NAME AppStdout "$BASE_DIR\server_out.log"
 & $NSSM set $SERVICE_NAME AppStderr "$BASE_DIR\server_err.log"
@@ -125,7 +125,7 @@ if ($cf_cred) {
     $cf_config = Join-Path $CF_WORK_DIR "config.yml"
 
     if (!$tunnelId) {
-        Write-Host "❌ Could not read TunnelID from $($cf_cred.FullName)" -ForegroundColor Red
+        Write-Host "Could not read TunnelID from $($cf_cred.FullName)" -ForegroundColor Red
         exit
     }
 
@@ -142,7 +142,7 @@ if ($cf_cred) {
 
     & $cf_bin tunnel --config "$cf_config" ingress validate
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "❌ cloudflared ingress validation failed. Check $cf_config" -ForegroundColor Red
+        Write-Host "cloudflared ingress validation failed. Check $cf_config" -ForegroundColor Red
         exit
     }
 
@@ -153,8 +153,8 @@ if ($cf_cred) {
     & $NSSM set $CF_SRV AppStderr "$BASE_DIR\cloudflared_err.log"
     & $NSSM set $CF_SRV ObjectName LocalSystem
     & $NSSM start $CF_SRV 2>$null
-    Write-Host "✅ Tunnel Synced." -ForegroundColor Green
-    Write-Host "ℹ️  Ensure DNS for $TUNNEL_HOSTNAME points to tunnel $tunnelId in Cloudflare Zero Trust." -ForegroundColor Yellow
+    Write-Host "Tunnel synced." -ForegroundColor Green
+    Write-Host "Ensure DNS for $TUNNEL_HOSTNAME points to tunnel $tunnelId in Cloudflare Zero Trust." -ForegroundColor Yellow
 }
 
 # --- 8. FINAL STATUS ---
@@ -165,5 +165,5 @@ $stText = if ($sObj) { $sObj.Status } else { "Not Found" }
 $stColor = if ($stText -eq "Running") { "Green" } else { "Red" }
 
 Write-Host "FINAL STATUS: $SERVICE_NAME is $stText" -ForegroundColor $stColor
-Write-Host "🐉 Congratulations! ChatLoom Server is fixed and running." -ForegroundColor Green
+Write-Host "ChatLoom Server is configured and running." -ForegroundColor Green
 Start-Sleep -Seconds 5
