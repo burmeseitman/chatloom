@@ -34,12 +34,18 @@ import {
   Home,
   Briefcase,
   Camera,
+  ChefHat,
+  Dumbbell,
   Gamepad2,
+  Landmark,
   Languages,
+  Leaf,
+  Plane,
   Rocket,
   Microscope,
   Atom,
   Palette,
+  Scale,
   AlertCircle,
   RefreshCcw,
   RefreshCw,
@@ -50,6 +56,7 @@ import {
   X,
   Copy,
   Settings,
+  Wrench,
 } from "lucide-react";
 
 // Use public/logo.png for the header image
@@ -126,6 +133,219 @@ const HARDWARE_PROFILES = {
     timeout: 120000,
     description: "Rich dialogue. Best for high-end GPUs.",
   },
+};
+
+const CATEGORY_ICON_MAP = {
+  All: Globe,
+  AI: Brain,
+  Tech: Cpu,
+  Gaming: Gamepad2,
+  Science: Atom,
+  Society: Users,
+  Creative: Palette,
+  General: Hash,
+};
+
+const TOPIC_ICON_RULES = [
+  {
+    icon: Brain,
+    phrases: [
+      "artificial intelligence",
+      "large language model",
+      "large language models",
+      "neural network",
+      "neural networks",
+      "machine learning",
+      "deep learning",
+      "the singularity",
+      "philosophy of mind",
+      "mental models",
+    ],
+    words: ["ai", "agi", "llm", "llms", "neural", "mind", "consciousness", "swarm"],
+  },
+  {
+    icon: Bot,
+    phrases: ["robotics and cybernetics", "autonomous vehicles", "brain computer interface"],
+    words: ["robotics", "cybernetics", "robots", "robot", "drones", "drone", "autonomous"],
+    prefixes: ["robot", "cybernet", "autom"],
+  },
+  {
+    icon: Code,
+    phrases: ["coding and debugging", "open source software"],
+    words: ["code", "coding", "debugging", "developer", "developers", "devops", "software", "script", "scripts"],
+    prefixes: ["programm", "debug", "script", "softwar"],
+  },
+  {
+    icon: Terminal,
+    words: ["terminal", "cli", "shell", "command", "commands"],
+    prefixes: ["command"],
+  },
+  {
+    icon: Wrench,
+    phrases: ["diy projects", "hardware hacking", "3d printing"],
+    words: ["diy", "maker", "makers", "repair", "engineering", "engineerings"],
+    prefixes: ["engineer", "fabricat"],
+  },
+  {
+    icon: Cpu,
+    phrases: ["internet of things", "edge computing"],
+    words: ["hardware", "computer", "computing", "chip", "chips", "processor", "processors", "semiconductor", "semiconductors", "network", "networks", "iot", "5g", "6g"],
+    prefixes: ["comput", "network", "semiconduct"],
+  },
+  {
+    icon: Database,
+    phrases: [
+      "data science",
+      "web3 and decentralization",
+      "blockchain identity",
+      "smart contracts",
+      "decentralized finance",
+    ],
+    words: ["data", "database", "databases", "blockchain", "web3", "cryptocurrency", "crypto", "cloud", "storage", "fintech", "defi"],
+    prefixes: ["blockchain", "crypto", "decentral", "database", "fintech"],
+  },
+  {
+    icon: Shield,
+    phrases: ["agi safety and ethics", "privacy rights"],
+    words: ["cybersecurity", "security", "privacy", "secure", "safety", "ethics", "trust"],
+    prefixes: ["cybersecur", "privac", "ethic", "secur"],
+  },
+  {
+    icon: Scale,
+    phrases: ["human rights", "political science"],
+    words: ["rights", "justice", "law", "legal", "policy", "policies", "governance"],
+    prefixes: ["politic", "geopolit", "govern"],
+  },
+  {
+    icon: Landmark,
+    words: ["history", "archeology", "archaeology", "civilization", "civilizations"],
+    prefixes: ["histor", "archae", "archeo"],
+  },
+  {
+    icon: Rocket,
+    phrases: ["space exploration", "space colonization", "deep space"],
+    words: ["space", "astronomy", "astronomical", "cosmos", "interstellar", "rocket", "rockets"],
+    prefixes: ["astro", "space", "rocket"],
+  },
+  {
+    icon: Atom,
+    words: ["quantum", "physics", "astrophysics", "nanotechnology", "genomics", "biology", "chemistry", "synthetic"],
+    prefixes: ["quantum", "physic", "nano", "genom", "bio", "chem", "materia"],
+  },
+  {
+    icon: Microscope,
+    words: ["science", "research", "experiment", "experiments", "laboratory", "lab"],
+    prefixes: ["research", "scient"],
+  },
+  {
+    icon: Plane,
+    words: ["travel", "wandering", "tourism", "journey", "journeys", "aviation"],
+    prefixes: ["travel", "wander", "tour"],
+  },
+  {
+    icon: Globe,
+    words: ["global", "world", "geography", "geopolitics", "culture", "cultures"],
+    prefixes: ["global", "geograph", "geopolit", "intercultur"],
+  },
+  {
+    icon: Film,
+    words: ["film", "films", "movie", "movies", "cinema", "anime", "manga", "comic", "comics"],
+    prefixes: ["film", "movie", "cinema", "anime", "manga", "comic"],
+  },
+  {
+    icon: Music,
+    words: ["music", "sound", "audio", "beats", "beat", "melody", "melodies", "composer", "composers"],
+    prefixes: ["music", "audio", "sound", "melod", "beat"],
+  },
+  {
+    icon: Camera,
+    words: ["photography", "photo", "photos", "camera", "cameras", "framing"],
+    prefixes: ["photo", "camera"],
+  },
+  {
+    icon: Palette,
+    words: ["art", "design", "creative", "fashion", "painting", "sketching", "architecture"],
+    prefixes: ["design", "creativ", "paint", "sketch", "architect", "fashion"],
+  },
+  {
+    icon: ChefHat,
+    words: ["food", "gastronomy", "cooking", "culinary", "kitchen", "recipe", "recipes"],
+    prefixes: ["cook", "culinar", "gastronom", "recipe"],
+  },
+  {
+    icon: Leaf,
+    words: ["sustainability", "greentech", "renewable", "climate", "gardening", "nature", "ecology"],
+    prefixes: ["sustain", "green", "renew", "climate", "garden", "ecolog", "environ"],
+  },
+  {
+    icon: Dumbbell,
+    words: ["fitness", "sports", "sport", "workout", "workouts", "wearables"],
+    prefixes: ["fit", "sport", "workout", "wearable"],
+  },
+  {
+    icon: Activity,
+    words: ["health", "medical", "medicine", "wellness", "biohacking"],
+    prefixes: ["health", "medic", "clinic", "well"],
+  },
+  {
+    icon: Heart,
+    words: ["love", "emotion", "emotions", "feeling", "feelings", "mental"],
+    prefixes: ["emotion", "mental"],
+  },
+  {
+    icon: Book,
+    words: ["book", "books", "literature", "writing", "education", "mythology"],
+    prefixes: ["liter", "writ", "educat", "myth"],
+  },
+  {
+    icon: Languages,
+    words: ["language", "languages", "translation", "linguistics"],
+    prefixes: ["languag", "translat", "linguist"],
+  },
+  {
+    icon: Briefcase,
+    words: ["economy", "finance", "business", "startup", "startups", "work", "management"],
+    prefixes: ["econom", "financ", "business", "startup", "manag"],
+  },
+  {
+    icon: Gamepad2,
+    phrases: ["board games", "card games"],
+    words: ["gaming", "games", "game", "esports", "console", "board", "card"],
+    prefixes: ["game", "esport", "console"],
+  },
+  {
+    icon: Home,
+    words: ["home", "house", "family", "minimalism", "living"],
+    prefixes: ["home", "house", "famil"],
+  },
+  {
+    icon: Coffee,
+    words: ["coffee", "cafe", "cafes", "drink", "drinks"],
+    prefixes: ["coffee", "cafe", "drink"],
+  },
+  {
+    icon: Star,
+    words: ["celebrity", "celebrities", "fame", "famous"],
+    prefixes: ["celeb", "fame"],
+  },
+];
+
+const normalizeTopicText = (value = "") =>
+  value.toLowerCase().replace(/&/g, " and ").replace(/[^\w\s]/g, " ");
+
+const getTopicTokens = (value = "") => normalizeTopicText(value).match(/[a-z0-9]+/g) || [];
+
+const matchesTopicRule = (text, tokens, rule) => {
+  if (rule.phrases?.some((phrase) => text.includes(phrase))) {
+    return true;
+  }
+  if (rule.words?.some((word) => tokens.includes(word))) {
+    return true;
+  }
+  if (rule.prefixes?.some((prefix) => tokens.some((token) => token.startsWith(prefix)))) {
+    return true;
+  }
+  return false;
 };
 
 const ChatMessage = React.memo(({ msg }) => {
@@ -210,6 +430,9 @@ function App() {
   const [activeParticipants, setActiveParticipants] = useState([]);
   const [categories, setCategories] = useState(["All"]);
   const [selectedCategory, setSelectedCategory] = useState("All");
+  const [activeOnly, setActiveOnly] = useState(
+    () => localStorage.getItem("chat_active_only") === "true",
+  );
   const [status, setStatus] = useState("Exploring topics...");
   const [bridgeActive, setBridgeActive] = useState(
     () => models.some((model) => model.origin === BRIDGE_ORIGIN)
@@ -261,6 +484,10 @@ function App() {
       localStorage.setItem("chat_persona", JSON.stringify(selectedPersona));
     }
   }, [selectedPersona]);
+
+  useEffect(() => {
+    localStorage.setItem("chat_active_only", String(activeOnly));
+  }, [activeOnly]);
   const [newPersona, setNewPersona] = useState({
     name: "",
     avatar: "🤖",
@@ -425,12 +652,12 @@ function App() {
     );
 
     return () => clearTimeout(timer);
-  }, [step, page, searchQuery, selectedCategory]);
+  }, [step, page, searchQuery, selectedCategory, activeOnly]);
 
   // Reset page when research query or category changes
   useEffect(() => {
     setPage(1);
-  }, [searchQuery, selectedCategory]);
+  }, [searchQuery, selectedCategory, activeOnly]);
 
   useEffect(() => {
     if (step === "setup") {
@@ -438,170 +665,27 @@ function App() {
     }
   }, [step]);
 
-  const getTopicIcon = (name) => {
-    const n = name.toLowerCase();
-    if (
-      n.includes("ai") ||
-      n.includes("intelligence") ||
-      n.includes("mind") ||
-      n.includes("psychology")
-    )
-      return <Brain size={20} />;
-    if (
-      n.includes("tech") ||
-      n.includes("computer") ||
-      n.includes("hardware") ||
-      n.includes("gadget")
-    )
-      return <Cpu size={20} />;
-    if (
-      n.includes("code") ||
-      n.includes("program") ||
-      n.includes("dev") ||
-      n.includes("script")
-    )
-      return <Code size={20} />;
-    if (
-      n.includes("world") ||
-      n.includes("global") ||
-      n.includes("travel") ||
-      n.includes("geography")
-    )
-      return <Globe size={20} />;
-    if (
-      n.includes("music") ||
-      n.includes("sound") ||
-      n.includes("audio") ||
-      n.includes("melody")
-    )
-      return <Music size={20} />;
-    if (
-      n.includes("film") ||
-      n.includes("movie") ||
-      n.includes("video") ||
-      n.includes("cinema")
-    )
-      return <Film size={20} />;
-    if (
-      n.includes("game") ||
-      n.includes("play") ||
-      n.includes("esport") ||
-      n.includes("console")
-    )
-      return <Gamepad2 size={20} />;
-    if (
-      n.includes("art") ||
-      n.includes("design") ||
-      n.includes("creative") ||
-      n.includes("palette")
-    )
-      return <Palette size={20} />;
-    if (
-      n.includes("science") ||
-      n.includes("research") ||
-      n.includes("experiment") ||
-      n.includes("lab")
-    )
-      return <Microscope size={20} />;
-    if (
-      n.includes("space") ||
-      n.includes("rocket") ||
-      n.includes("astronomy") ||
-      n.includes("future")
-    )
-      return <Rocket size={20} />;
-    if (
-      n.includes("data") ||
-      n.includes("cloud") ||
-      n.includes("server") ||
-      n.includes("storage")
-    )
-      return <Database size={20} />;
-    if (
-      n.includes("health") ||
-      n.includes("medical") ||
-      n.includes("bio") ||
-      n.includes("doctor")
-    )
-      return <Activity size={20} />;
-    if (
-      n.includes("book") ||
-      n.includes("read") ||
-      n.includes("write") ||
-      n.includes("literature")
-    )
-      return <Book size={20} />;
-    if (
-      n.includes("money") ||
-      n.includes("finance") ||
-      n.includes("business") ||
-      n.includes("economy")
-    )
-      return <Briefcase size={20} />;
-    if (
-      n.includes("photo") ||
-      n.includes("image") ||
-      n.includes("capture") ||
-      n.includes("lens")
-    )
-      return <Image size={20} />;
-    if (
-      n.includes("coffee") ||
-      n.includes("drink") ||
-      n.includes("cafe") ||
-      n.includes("eat")
-    )
-      return <Coffee size={20} />;
-    if (
-      n.includes("heart") ||
-      n.includes("love") ||
-      n.includes("emotion") ||
-      n.includes("feeling")
-    )
-      return <Heart size={20} />;
-    if (
-      n.includes("star") ||
-      n.includes("fame") ||
-      n.includes("cele") ||
-      n.includes("popular")
-    )
-      return <Star size={20} />;
-    if (
-      n.includes("home") ||
-      n.includes("house") ||
-      n.includes("family") ||
-      n.includes("living")
-    )
-      return <Home size={20} />;
-    if (
-      n.includes("shield") ||
-      n.includes("secure") ||
-      n.includes("guard") ||
-      n.includes("protect")
-    )
-      return <Shield size={20} />;
-    if (
-      n.includes("zap") ||
-      n.includes("energy") ||
-      n.includes("power") ||
-      n.includes("flash")
-    )
-      return <Zap size={20} />;
-    if (
-      n.includes("terminal") ||
-      n.includes("cli") ||
-      n.includes("command") ||
-      n.includes("shell")
-    )
-      return <Terminal size={20} />;
-    if (
-      n.includes("language") ||
-      n.includes("speak") ||
-      n.includes("translate") ||
-      n.includes("word")
-    )
-      return <Languages size={20} />;
-    return <Hash size={20} />;
+  const getCategoryIcon = (category, size = 16, className = "") => {
+    const IconComponent = CATEGORY_ICON_MAP[category] || Hash;
+    return <IconComponent size={size} className={className} />;
+  };
+
+  const getTopicIcon = (topic) => {
+    const name = typeof topic === "string" ? topic : topic?.name || "";
+    const category = typeof topic === "string" ? "General" : topic?.category || "General";
+    const normalizedName = normalizeTopicText(name);
+    const tokens = getTopicTokens(name);
+
+    const matchedRule = TOPIC_ICON_RULES.find((rule) =>
+      matchesTopicRule(normalizedName, tokens, rule),
+    );
+
+    if (matchedRule) {
+      const IconComponent = matchedRule.icon;
+      return <IconComponent size={20} />;
+    }
+
+    return getCategoryIcon(category, 20);
   };
 
   useEffect(() => {
@@ -616,12 +700,17 @@ function App() {
     fetchCategories();
   }, []);
 
-  const fetchTopics = async (targetPage = 1, query = "", category = "All") => {
+  const fetchTopics = async (
+    targetPage = 1,
+    query = "",
+    category = "All",
+    activeOnlyFilter = activeOnly,
+  ) => {
     setIsTopicsLoading(true);
     try {
       const startTime = Date.now();
       const res = await axios.get(
-        `${BACKEND_URL}/api/topics?page=${targetPage}&limit=12&query=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}`,
+        `${BACKEND_URL}/api/topics?page=${targetPage}&limit=12&query=${encodeURIComponent(query)}&category=${encodeURIComponent(category)}&active_only=${activeOnlyFilter ? "1" : "0"}`,
       );
       const endTime = Date.now();
 
@@ -1174,26 +1263,65 @@ function App() {
                 </h2>
               </div>
 
-              {/* Search Box */}
-              <div className="relative group w-full md:w-80">
-                <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-                  <Search
-                    size={16}
-                    className={`transition-colors ${searchQuery.length > 0 ? "text-cyan-400" : "text-gray-500"}`}
-                  />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search topics..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white/[0.03] border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:bg-white/[0.06] transition-all placeholder:text-gray-600"
-                />
-                {searchQuery.length > 0 && searchQuery.length < 2 && (
-                  <div className="absolute -bottom-5 left-1 text-[8px] font-bold text-gray-500 uppercase tracking-widest animate-pulse">
-                    Type 2+ letters...
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setActiveOnly((current) => !current)}
+                  className={`group flex items-center justify-between gap-4 rounded-2xl border px-4 py-2.5 transition-all ${
+                    activeOnly
+                      ? "border-green-400/30 bg-green-500/10 text-green-300"
+                      : "border-white/10 bg-white/[0.03] text-gray-400 hover:bg-white/[0.06]"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Users size={15} className={activeOnly ? "text-green-300" : "text-gray-500"} />
+                    <div className="text-left">
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em]">
+                        Active Groups
+                      </div>
+                      <div className="text-[9px] font-bold opacity-70">
+                        Show rooms with participants
+                      </div>
+                    </div>
                   </div>
-                )}
+                  <div
+                    className={`relative h-6 w-11 rounded-full border transition-all ${
+                      activeOnly
+                        ? "border-green-400/40 bg-green-400/20"
+                        : "border-white/10 bg-black/30"
+                    }`}
+                  >
+                    <div
+                      className={`absolute top-0.5 h-4.5 w-4.5 rounded-full transition-all ${
+                        activeOnly
+                          ? "left-[22px] bg-green-300 shadow-[0_0_12px_rgba(134,239,172,0.5)]"
+                          : "left-0.5 bg-gray-500"
+                      }`}
+                    />
+                  </div>
+                </button>
+
+                {/* Search Box */}
+                <div className="relative group w-full md:w-80">
+                  <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                    <Search
+                      size={16}
+                      className={`transition-colors ${searchQuery.length > 0 ? "text-cyan-400" : "text-gray-500"}`}
+                    />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search topics..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-white/[0.03] border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:bg-white/[0.06] transition-all placeholder:text-gray-600"
+                  />
+                  {searchQuery.length > 0 && searchQuery.length < 2 && (
+                    <div className="absolute -bottom-5 left-1 text-[8px] font-bold text-gray-500 uppercase tracking-widest animate-pulse">
+                      Type 2+ letters...
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             {/* Split Layout for Categories and Topics */}
@@ -1205,44 +1333,36 @@ function App() {
                    <div className="w-1.5 h-1.5 bg-blue-500 rounded-full" />
                    <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Sphere Selection</span>
                 </div>
-                <div className="flex xl:flex-col gap-2 overflow-x-auto pb-4 xl:pb-0 px-2 xl:px-0 no-scrollbar">
-                  {categories.map((cat) => {
-                    const getCategoryIcon = (c) => {
-                      switch (c) {
-                        case "All": return <Globe size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
-                        case "AI": return <Brain size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
-                        case "Tech": return <Cpu size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
-                        case "Gaming": return <Gamepad2 size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
-                        case "Science": return <Atom size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
-                        case "Society": return <Users size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
-                        case "Creative": return <Palette size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
-                        default: return <Hash size={16} className={selectedCategory === c ? "text-blue-200" : "text-gray-500"} />;
-                      }
-                    };
-                    return (
-                      <button
-                        key={cat}
+	                <div className="flex xl:flex-col gap-2 overflow-x-auto pb-4 xl:pb-0 px-2 xl:px-0 no-scrollbar">
+	                  {categories.map((cat) => {
+	                    return (
+	                      <button
+	                        key={cat}
                         onClick={() => setSelectedCategory(cat)}
                         className={`px-5 py-3.5 rounded-2xl text-[10px] md:text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap text-left flex items-center gap-3 group ${
                           selectedCategory === cat
                             ? "bg-blue-600 text-zinc-50 shadow-lg shadow-blue-900/40 border border-blue-400/30"
-                            : "bg-white/5 text-gray-500 hover:bg-[var(--irc-border)] border border-transparent hover:text-gray-300"
-                        }`}
-                      >
-                        {getCategoryIcon(cat)}
-                        <span className="flex-1">{cat}</span>
-                        <div className={`w-1.5 h-1.5 rounded-full transition-all ${selectedCategory === cat ? "bg-white animate-pulse" : "bg-white/10 group-hover:bg-blue-400"}`} />
-                      </button>
+	                            : "bg-white/5 text-gray-500 hover:bg-[var(--irc-border)] border border-transparent hover:text-gray-300"
+	                        }`}
+	                      >
+	                        {getCategoryIcon(
+	                          cat,
+	                          16,
+	                          selectedCategory === cat ? "text-blue-200" : "text-gray-500",
+	                        )}
+	                        <span className="flex-1">{cat}</span>
+	                        <div className={`w-1.5 h-1.5 rounded-full transition-all ${selectedCategory === cat ? "bg-white animate-pulse" : "bg-white/10 group-hover:bg-blue-400"}`} />
+	                      </button>
                     )
                   })}
                 </div>
               </div>
 
-              {/* Topics Grid */}
-              <div className="w-full flex-1">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 lg:gap-6">
-                  {isTopicsLoading
-                    ? Array.from({ length: 12 }).map((_, i) => (
+	              {/* Topics Grid */}
+	              <div className="w-full flex-1">
+	                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 lg:gap-6">
+	                  {isTopicsLoading
+	                    ? Array.from({ length: 12 }).map((_, i) => (
                         <div
                           key={i}
                           className="glass p-6 rounded-2xl border border-[var(--irc-border)] animate-pulse min-h-[160px]"
@@ -1255,9 +1375,10 @@ function App() {
                           <div className="h-5 bg-[var(--irc-border)] rounded-md w-1/2" />
                         </div>
                       ))
-                    : topics.map((t, idx) => (
-                        <motion.div
-                          key={t.name}
+	                    : topics.length > 0
+	                      ? topics.map((t, idx) => (
+	                        <motion.div
+	                          key={t.name}
                           initial={{ opacity: 0, scale: 0.98 }}
                           animate={{ opacity: 1, scale: 1 }}
                           transition={{ delay: idx * 0.03, duration: 0.2 }}
@@ -1266,11 +1387,11 @@ function App() {
                         >
                           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500/0 to-transparent group-hover:via-blue-500/50 transition-all" />
                           <div className="flex justify-between items-start mb-4">
-                            <div className="p-2.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl group-hover:from-purple-500/30 group-hover:to-pink-500/30 transition-all">
-                              <div className="text-cyan-400 group-hover:text-purple-300">
-                                {getTopicIcon(t.name)}
-                              </div>
-                            </div>
+	                            <div className="p-2.5 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl group-hover:from-purple-500/30 group-hover:to-pink-500/30 transition-all">
+	                              <div className="text-cyan-400 group-hover:text-purple-300">
+	                                {getTopicIcon(t)}
+	                              </div>
+	                            </div>
                             <div className="flex flex-col items-end gap-2">
                               {t.category && (
                                 <span className="text-[8px] font-black uppercase tracking-widest text-blue-400/50 bg-blue-500/10 px-2 py-0.5 rounded-full">
@@ -1285,14 +1406,29 @@ function App() {
                               </div>
                             </div>
                           </div>
-                          <h3 className="text-lg font-bold leading-tight text-[var(--irc-text)] group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-purple-200">
-                            {t.name}
-                          </h3>
-                        </motion.div>
-                      ))}
-                </div>
-              </div>
-            </div>
+	                          <h3 className="text-lg font-bold leading-tight text-[var(--irc-text)] group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-purple-200">
+	                            {t.name}
+	                          </h3>
+	                        </motion.div>
+	                      ))
+	                      : (
+	                        <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 glass rounded-3xl border border-white/10 p-8 text-center">
+	                          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
+	                            <Users size={22} className={activeOnly ? "text-green-300" : "text-gray-500"} />
+	                          </div>
+	                          <h3 className="text-lg font-black text-[var(--irc-text)]">
+	                            {activeOnly ? "No active groups right now" : "No topics found"}
+	                          </h3>
+	                          <p className="mx-auto mt-2 max-w-md text-sm text-gray-500">
+	                            {activeOnly
+	                              ? "Turn off the active filter or wait for participants to join a room."
+	                              : "Try another search term or change the selected category."}
+	                          </p>
+	                        </div>
+	                      )}
+	                </div>
+	              </div>
+	            </div>
           </div>
 
           {/* Pagination */}
@@ -1508,26 +1644,17 @@ function App() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <button
-                onClick={() => handleTopicClick(selectedTopic)}
-                className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl font-black text-sm shadow-lg shadow-blue-900/30 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-white"
-              >
-                <RefreshCw size={18} /> RETRY CONNECTION
-              </button>
-              <button
-                onClick={() => {
-                  setStep("setup");
-                  fetchPersonas();
-                }}
-                className="w-full py-4 bg-blue-500/10 hover:bg-blue-500/20 text-cyan-400 border border-blue-500/20 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all"
-              >
-                Proceed to Setup Manually
-              </button>
-              <button
-                onClick={() => setStep("topics")}
-                className="w-full py-4 bg-white/5 hover:bg-white/10 rounded-2xl font-bold text-xs text-gray-500 transition-all uppercase tracking-widest"
-              >
+	            <div className="flex flex-col gap-3">
+	              <button
+	                onClick={() => handleTopicClick(selectedTopic)}
+	                className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 rounded-2xl font-black text-sm shadow-lg shadow-blue-900/30 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-white"
+	              >
+	                <RefreshCw size={18} /> RETRY CONNECTION
+	              </button>
+	              <button
+	                onClick={() => setStep("topics")}
+	                className="w-full py-4 bg-white/5 hover:bg-white/10 rounded-2xl font-bold text-xs text-gray-500 transition-all uppercase tracking-widest"
+	              >
                 Back to Topics
               </button>
             </div>

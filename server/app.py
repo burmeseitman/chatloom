@@ -498,6 +498,7 @@ def get_topics():
     limit = int(request.args.get('limit', 12))
     search_query = request.args.get('query', '').strip()
     category = request.args.get('category', 'All').strip()
+    active_only = request.args.get('active_only', '0').strip().lower() in ('1', 'true', 'yes', 'on')
     offset = (page - 1) * limit
     
     conn = get_db_connection()
@@ -511,6 +512,24 @@ def get_topics():
     if category and category != 'All':
         query += ' AND category = ?'
         params.append(category)
+
+    if active_only:
+        active_topic_names = [
+            room_id for room_id, room_info in active_rooms.items()
+            if len(room_info.get('active_llms', {})) > 0
+        ]
+        if not active_topic_names:
+            conn.close()
+            return jsonify({
+                "topics": [],
+                "total": 0,
+                "page": page,
+                "limit": limit
+            })
+
+        placeholders = ','.join('?' for _ in active_topic_names)
+        query += f' AND name IN ({placeholders})'
+        params.extend(active_topic_names)
 
     # Count total
     count_query = query.replace('SELECT name, category', 'SELECT COUNT(*)')

@@ -3,7 +3,7 @@
 AI Swarm Node - Neural Bridge v2.3
 Connects local Ollama to the AI Swarm Network.
 """
-import urllib.request, urllib.error, json, time, sys, os, threading, webbrowser, subprocess, tempfile
+import urllib.request, urllib.error, json, time, sys, os, threading, subprocess, tempfile
 
 # --- CONFIGURATION ---
 VERSION = "2.3"
@@ -308,7 +308,6 @@ def setup_tray():
         MenuItem(lambda text: f"Status: {STATUS}", None, enabled=False),
         MenuItem(lambda text: f"Session: {SESSION_ID[:8]}...", None, enabled=False),
         Menu.SEPARATOR,
-        MenuItem("Open Dashboard", lambda icon, item: webbrowser.open(API_URL), default=not getattr(Icon, "HAS_MENU", True)),
         MenuItem("Exit Node", on_quit)
     )
     icon = Icon("ChatLoom", create_icon_image(), "ChatLoom Swarm", menu)
