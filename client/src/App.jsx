@@ -288,7 +288,7 @@ function App() {
           const bridgedModels = res.data.models.map((m) => ({
             name: m.name,
             parameter_size: m.parameter_size,
-            origin: "Neural Link",
+            origin: "Neural Bridge",
           }));
           
           setModels(bridgedModels);
@@ -744,7 +744,7 @@ function App() {
           setStatus("Scanning your local AI engine...");
           const localRes = await axios.get(target, { timeout: 5000, signal });
           if (localRes.data?.models) {
-            const mod = processModels(localRes.data.models, "Neural Link");
+            const mod = processModels(localRes.data.models, "Local Browser");
             if (mod.length > 0) {
               console.log(
                 `DEBUG: ✅ ${mod.length} models found via direct access`,
@@ -767,8 +767,8 @@ function App() {
       // ─────────────────────────────────────────────────────────────────
       if (!signal.aborted) {
         try {
-          console.log(`DEBUG: Falling back to backend bridge...`);
-          setStatus("Direct access blocked. Trying Secure Bridge...");
+          console.log(`DEBUG: Falling back to session bridge...`);
+          setStatus("Direct browser access blocked. Trying your Neural Bridge...");
           const bridgeRes = await axios.get(
             `${BACKEND_URL}/api/detect-llm?session_id=${sessionId}`,
             { timeout: 12000, signal },
@@ -781,7 +781,7 @@ function App() {
             const mapped = bridgeRes.data.models.map((m) => ({
               name: m.name,
               parameter_size: m.parameter_size,
-              origin: "Neural Link",
+              origin: bridgeRes.data.origin || "Neural Bridge",
             }));
             console.log(
               `DEBUG: ✅ Bridge success with ${mapped.length} models`,
@@ -960,10 +960,10 @@ function App() {
           );
         } catch (localErr) {
           console.warn(
-            "Direct access blocked. Using Backend Bridge...",
+            "Direct access blocked. Using session Neural Bridge...",
             localErr,
           );
-          // Attempt 2: Backend Bridge (bridge.py handles forwarding)
+          // Attempt 2: Session bridge (bridge.py handles forwarding from this client)
           res = await axios.post(
             `${BACKEND_URL}/api/generate-bridge`,
             { ...generateData, session_id: sessionId },
@@ -1627,7 +1627,7 @@ function App() {
                         <span className="font-bold">{m.name}</span>
                         <span
                           className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase tracking-widest border ${
-                            m.origin === "Local PC"
+                            m.origin === "Local Browser"
                               ? "bg-green-500/10 text-green-400 border-green-500/20"
                               : "bg-blue-500/10 text-blue-400 border-blue-500/20"
                           }`}
@@ -1639,7 +1639,7 @@ function App() {
                         <span className="text-[10px] text-gray-500">
                           {m.parameter_size}
                         </span>
-                        {m.origin === "Local PC" && (
+                        {m.origin === "Local Browser" && (
                           <span className="text-[8px] text-gray-600 italic">
                             No Setup Required
                           </span>

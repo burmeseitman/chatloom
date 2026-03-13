@@ -3,7 +3,6 @@ monkey.patch_all()
 from gevent.pywsgi import WSGIServer
 from geventwebsocket.handler import WebSocketHandler
 import os
-import requests
 import sqlite3
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -108,7 +107,6 @@ socketio = SocketIO(
     engineio_logger=False
 )
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
 
 # Swarm State
@@ -310,40 +308,6 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def get_ollama_models():
-    # Attempt multiple common addresses for robust local and docker support
-    targets = [
-        os.getenv("OLLAMA_URL", "http://localhost:11434"),
-        "http://127.0.0.1:11434",
-        "http://host.docker.internal:11434",
-        "http://ollama-engine:11434",
-        "http://0.0.0.0:11434"
-    ]
-    # Remove duplicates while preserving order
-    targets = list(dict.fromkeys(targets))
-    
-    for base_url in targets:
-        try:
-            response = requests.get(f"{base_url}/api/tags", timeout=3)
-            if response.status_code == 200:
-                # If we found it, save this successful URL globally so that generate_bridge can use it
-                global OLLAMA_URL
-                OLLAMA_URL = base_url
-                models = response.json().get('models', [])
-                suitable_models = []
-                for m in models:
-                    name_lower = m.get('name', '').lower()
-                    if not m.get('digest') or "cloud" in name_lower: 
-                        continue
-                    suitable_models.append({
-                        "name": m.get('name'),
-                        "parameter_size": m.get('details', {}).get('parameter_size', 'unknown')
-                    })
-                return suitable_models
-        except:
-            continue
-    return []
-
 def get_setting(key, default=None):
     try:
         conn = get_db_connection()
@@ -355,11 +319,11 @@ def get_setting(key, default=None):
 
 @app.route('/api/detect-llm', methods=['GET'])
 def detect_llm():
-    """Detect AI models — checks bridge first, then tunnel, then local."""
+    """Detect AI models for the current client session only."""
     session_id = request.args.get('session_id')
     print(f"--- Detection Start (session: {session_id}) ---")
 
-    # === PRIORITY 1: Check Bridge (new approach) ===
+    # Session-bound bridge only. Do not inspect Ollama on the server host.
     if session_id and session_id in bridge_sessions:
         bridge = bridge_sessions[session_id]
         age = time.time() - bridge.get('last_seen', 0)
@@ -368,28 +332,21 @@ def detect_llm():
             return jsonify({
                 "status": "success",
                 "models": bridge['models'],
-                "origin": "Your PC (Bridge)"
+                "origin": "Neural Bridge"
             })
         elif age >= 15:
             print(f"Bridge STALE: last seen {age:.0f}s ago")
 
-    # === PRIORITY 2: Local Ollama on server ===
-    print("Trying local Ollama...")
-    models = get_ollama_models()
-    if models:
-        print(f"Local SUCCESS: {len(models)} models")
-        return jsonify({"status": "success", "models": models, "origin": "Local PC (Server)"})
-
-    print("All detection methods exhausted.")
+    print("No session-bound client models detected.")
     return jsonify({
         "status": "error",
-        "message": "No AI found. Run the Bridge command shown on ChatLoom to connect your Ollama.",
+        "message": "No client AI found for this session. Use direct localhost access from the browser or run the Neural Bridge on your machine.",
         "bridge_active": session_id in bridge_sessions if session_id else False
     }), 200
 
 @app.route('/api/generate-bridge', methods=['POST'])
 def generate_bridge():
-    """Bridge for AI generation — uses bridge queue OR direct Ollama."""
+    """Bridge AI generation for the current client session only."""
     data = request.json
     model = data.get('model')
     prompt = data.get('prompt')
@@ -400,7 +357,7 @@ def generate_bridge():
     if not model or not prompt:
         return jsonify({"error": "Missing model or prompt"}), 400
 
-    # === TRY 1: Bridge queue (bridge.py handles generation) ===
+    # Session-bound bridge only. Never fall back to Ollama running on the server.
     if session_id and session_id in bridge_sessions:
         bridge = bridge_sessions[session_id]
         if (time.time() - bridge.get('last_seen', 0)) < 15:
@@ -427,19 +384,9 @@ def generate_bridge():
                 time.sleep(0.5)
             return jsonify({"error": "Bridge timeout — generation took too long"}), 504
 
-    # === TRY 2: Direct Ollama (if on same machine as backend) ===
-    target_url = OLLAMA_URL
-
-    try:
-        response = requests.post(
-            f"{target_url}/api/generate",
-            json={"model": model, "prompt": prompt, "system": system, "options": options, "stream": False},
-            timeout=180
-        )
-        return jsonify(response.json()), response.status_code
-    except Exception as e:
-        print(f"Generate Error: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+    return jsonify({
+        "error": "No active Neural Bridge for this session. Generation must run on the client's local Ollama, not the server."
+    }), 409
 
 @app.route('/api/personas', methods=['GET', 'POST'])
 def handle_personas():
