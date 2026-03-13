@@ -3,22 +3,20 @@
 AI Swarm Node - Neural Bridge v2.2
 Connects local Ollama to the AI Swarm Network.
 """
-import urllib.request, urllib.error, json, time, sys, os, threading, webbrowser
+import urllib.request, urllib.error, json, time, sys, os, threading, webbrowser, subprocess, tempfile
 
 # --- CONFIGURATION ---
-VERSION = "2.2"
+VERSION = "2.3"
 SESSION_ID = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('CHATLOOM_SESSION', '')
 API_URL = (sys.argv[2] if len(sys.argv) > 2 else os.environ.get('CHATLOOM_API', 'https://chatloom.online')).rstrip('/')
 OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434')
+LOG_PATH = os.environ.get('CHATLOOM_BRIDGE_LOG', os.path.join(tempfile.gettempdir(), 'bridge.log'))
 
-# Optional Tray Dependencies
-TRAY_ENABLED = False
-try:
-    from pystray import Icon, Menu, MenuItem
-    from PIL import Image, ImageDraw
-    TRAY_ENABLED = True
-except Exception as e:
-    print(f"ℹ️  Starting in Terminal Mode (Tray UI skipped: {e})")
+Icon = None
+Menu = None
+MenuItem = None
+Image = None
+ImageDraw = None
 
 STATUS = "Starting..."
 MODELS_FOUND = 0
@@ -26,7 +24,60 @@ IS_RUNNING = True
 
 def log(msg):
     timestamp = time.strftime("%H:%M:%S")
-    print(f"[{timestamp}] 🐉 {msg}")
+    line = f"[{timestamp}] [ChatLoom Bridge] {msg}"
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as log_file:
+            log_file.write(line + "\n")
+    except Exception:
+        pass
+
+def has_gui_session():
+    if os.environ.get("CHATLOOM_DISABLE_TRAY") == "1":
+        return False
+    if sys.platform.startswith("win") or sys.platform == "darwin":
+        return True
+    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+def import_tray_modules():
+    global Icon, Menu, MenuItem, Image, ImageDraw
+    try:
+        from pystray import Icon as _Icon, Menu as _Menu, MenuItem as _MenuItem
+        from PIL import Image as _Image, ImageDraw as _ImageDraw
+    except Exception as exc:
+        return False, str(exc)
+
+    Icon = _Icon
+    Menu = _Menu
+    MenuItem = _MenuItem
+    Image = _Image
+    ImageDraw = _ImageDraw
+    return True, None
+
+def ensure_tray_support():
+    if not has_gui_session():
+        return False, "No GUI session available for tray icon"
+
+    ok, err = import_tray_modules()
+    if ok:
+        return True, None
+
+    log(f"Tray dependencies missing. Attempting background install: {err}")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--quiet", "pystray", "pillow"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=120,
+            check=True
+        )
+    except Exception as install_err:
+        return False, f"Dependency install failed: {install_err}"
+
+    return import_tray_modules()
 
 def ollama_request(path, method="GET", data=None, timeout=10):
     targets = [OLLAMA_URL]
@@ -97,6 +148,7 @@ def bridge_loop():
     log(f"Neural Bridge v{VERSION} Active")
     log(f"Session: {SESSION_ID}")
     log(f"Network: {API_URL}")
+    log(f"Log file: {LOG_PATH}")
     
     last_hb = 0
     while IS_RUNNING:
@@ -148,7 +200,9 @@ def on_quit(icon, item):
     sys.exit(0)
 
 def setup_tray():
-    if not TRAY_ENABLED:
+    tray_ready, tray_error = ensure_tray_support()
+    if not tray_ready:
+        log(f"Starting in headless mode (tray unavailable: {tray_error})")
         bridge_loop()
         return
 
@@ -160,12 +214,17 @@ def setup_tray():
         MenuItem("Exit Node", on_quit)
     )
     icon = Icon("ChatLoom", create_icon_image(), "ChatLoom Swarm", menu)
-    threading.Thread(target=bridge_loop, daemon=True).start()
-    icon.run()
+    worker = threading.Thread(target=bridge_loop, name="bridge-loop")
+    worker.start()
+    try:
+        icon.run()
+    except Exception as exc:
+        log(f"Tray startup failed. Continuing headless: {exc}")
+        while IS_RUNNING:
+            time.sleep(5)
 
 if __name__ == "__main__":
     if not SESSION_ID:
         print("❌ ERROR: SESSION_ID missing. Provide it as an argument or env var.")
         sys.exit(1)
     setup_tray()
-
