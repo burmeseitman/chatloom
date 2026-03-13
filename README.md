@@ -44,6 +44,16 @@ The `swarm/` directory is experimental scaffolding. It is not part of the main r
 
 ### Backend
 
+Ubuntu one-line setup from the repo root:
+
+```bash
+sudo bash ./host_setup.sh
+```
+
+This script installs Python dependencies, initializes SQLite, creates `chatloom.service`, and configures `chatloom-cloudflared.service` if Cloudflare tunnel credentials already exist on the host.
+
+Manual setup is still available if you prefer:
+
 ```bash
 cd server
 python init_db.py
