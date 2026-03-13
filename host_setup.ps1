@@ -131,14 +131,14 @@ if ($cf_cred) {
 
     Copy-Item -Path $cf_cred.FullName -Destination $cf_cred_copy -Force
 
-    @"
-tunnel: $tunnelId
-credentials-file: $cf_cred_copy
-ingress:
-  - hostname: $TUNNEL_HOSTNAME
-    service: http://127.0.0.1:5001
-  - service: http_status:404
-"@ | Set-Content -Path $cf_config -Encoding utf8
+    @(
+        "tunnel: $tunnelId"
+        "credentials-file: $cf_cred_copy"
+        "ingress:"
+        "  - hostname: $TUNNEL_HOSTNAME"
+        "    service: http://127.0.0.1:5001"
+        "  - service: http_status:404"
+    ) | Set-Content -Path $cf_config -Encoding utf8
 
     & $cf_bin tunnel --config "$cf_config" ingress validate
     if ($LASTEXITCODE -ne 0) {
