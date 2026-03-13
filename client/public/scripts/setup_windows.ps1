@@ -68,15 +68,42 @@ if (!$pyw -and $pyResolved) {
 }
 
 $env:CHATLOOM_BRIDGE_LOG = Join-Path $env:TEMP "bridge.log"
+$bridgeState = Join-Path $env:TEMP "bridge-state.json"
+if (Test-Path $bridgeState) { Remove-Item $bridgeState -Force -ErrorAction SilentlyContinue }
+$env:CHATLOOM_BRIDGE_STATE = $bridgeState
 if ($pyw) {
     Start-Process $pyw -ArgumentList "`"$bridgePath`" `"$SESSION_ID`" `"$API_URL`"" -WorkingDirectory $env:TEMP
 } else {
     Start-Process $pyResolved -ArgumentList "`"$bridgePath`" `"$SESSION_ID`" `"$API_URL`"" -WindowStyle Hidden -WorkingDirectory $env:TEMP
 }
 
-Start-Sleep -Seconds 2
+Start-Sleep -Milliseconds 500
+$trayState = ""
+$trayMessage = ""
+for ($i = 0; $i -lt 24; $i++) {
+    if (Test-Path $bridgeState) {
+        try {
+            $stateData = Get-Content $bridgeState -Raw | ConvertFrom-Json
+            $trayState = $stateData.state
+            $trayMessage = $stateData.message
+        } catch {}
+    }
+
+    if ($trayState -eq "tray_ready" -or $trayState -eq "headless") {
+        break
+    }
+    Start-Sleep -Milliseconds 500
+}
+
 Write-Host "SUCCESS: Neural Node is now active." -ForegroundColor Green
 Write-Host "Bridge log: $env:TEMP\bridge.log" -ForegroundColor Gray
+if ($trayState -eq "tray_ready") {
+    Write-Host "Tray icon is ready." -ForegroundColor Green
+} elseif ($trayState -eq "headless") {
+    Write-Host "Tray icon is unavailable: $trayMessage" -ForegroundColor Yellow
+} else {
+    Write-Host "Tray status is still starting. Check $env:TEMP\bridge.log if the icon does not appear." -ForegroundColor Yellow
+}
 Write-Host "------------------------------------------" -ForegroundColor Cyan
 Write-Host "Returning to your terminal in 2s..." -ForegroundColor Gray
 Start-Sleep -Seconds 2

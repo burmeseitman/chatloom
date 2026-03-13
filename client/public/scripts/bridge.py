@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Swarm Node - Neural Bridge v2.2
+AI Swarm Node - Neural Bridge v2.3
 Connects local Ollama to the AI Swarm Network.
 """
 import urllib.request, urllib.error, json, time, sys, os, threading, webbrowser, subprocess, tempfile
@@ -11,6 +11,7 @@ SESSION_ID = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('CHATLOOM_SESS
 API_URL = (sys.argv[2] if len(sys.argv) > 2 else os.environ.get('CHATLOOM_API', 'https://chatloom.online')).rstrip('/')
 OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434')
 LOG_PATH = os.environ.get('CHATLOOM_BRIDGE_LOG', os.path.join(tempfile.gettempdir(), 'bridge.log'))
+STATE_PATH = os.environ.get('CHATLOOM_BRIDGE_STATE', os.path.join(tempfile.gettempdir(), 'bridge-state.json'))
 
 Icon = None
 Menu = None
@@ -21,6 +22,7 @@ ImageDraw = None
 STATUS = "Starting..."
 MODELS_FOUND = 0
 IS_RUNNING = True
+CURRENT_TRAY_BACKEND = None
 
 def log(msg):
     timestamp = time.strftime("%H:%M:%S")
@@ -35,6 +37,33 @@ def log(msg):
     except Exception:
         pass
 
+def write_state(state, message=None, extra=None):
+    payload = {
+        "state": state,
+        "message": message or "",
+        "timestamp": time.time()
+    }
+    if extra:
+        payload.update(extra)
+
+    try:
+        with open(STATE_PATH, "w", encoding="utf-8") as state_file:
+            json.dump(payload, state_file)
+    except Exception:
+        pass
+
+def desktop_environment():
+    return " ".join(
+        part for part in [
+            os.environ.get("XDG_CURRENT_DESKTOP", ""),
+            os.environ.get("DESKTOP_SESSION", "")
+        ] if part
+    ).lower()
+
+def is_gnome_like():
+    desktop = desktop_environment()
+    return any(name in desktop for name in ("gnome", "ubuntu", "pop"))
+
 def has_gui_session():
     if os.environ.get("CHATLOOM_DISABLE_TRAY") == "1":
         return False
@@ -48,7 +77,7 @@ def reset_pystray_modules():
             del sys.modules[module_name]
 
 def import_tray_modules(backend=None):
-    global Icon, Menu, MenuItem, Image, ImageDraw
+    global Icon, Menu, MenuItem, Image, ImageDraw, CURRENT_TRAY_BACKEND
     if backend:
         os.environ["PYSTRAY_BACKEND"] = backend
     elif "PYSTRAY_BACKEND" in os.environ:
@@ -66,11 +95,16 @@ def import_tray_modules(backend=None):
     MenuItem = _MenuItem
     Image = _Image
     ImageDraw = _ImageDraw
+    CURRENT_TRAY_BACKEND = backend or "auto"
     return True, None, backend or "auto"
 
 def linux_backend_candidates():
     session_type = (os.environ.get("XDG_SESSION_TYPE") or "").lower()
     is_wayland = bool(os.environ.get("WAYLAND_DISPLAY")) or session_type == "wayland"
+    if is_gnome_like():
+        # On GNOME, pystray's GTK backend can run without rendering an icon.
+        # AppIndicator is the only backend that reliably maps to a visible tray.
+        return ["appindicator"]
 
     # pystray docs recommend AppIndicator on Linux. On GNOME, GTK often starts
     # successfully but still does not render a visible icon.
@@ -113,6 +147,11 @@ def ensure_tray_support():
             if ok:
                 log(f"Tray backend selected after install: {selected_backend}")
                 return True, None
+        if is_gnome_like():
+            return False, (
+                "GNOME session detected, but AppIndicator support is unavailable. "
+                "Install AppIndicator support for your desktop session and restart the bridge."
+            )
         return False, err
 
     ok, err, selected_backend = import_tray_modules()
@@ -237,13 +276,21 @@ def on_quit(icon, item):
     global IS_RUNNING
     log("Shutting down bridge...")
     IS_RUNNING = False
+    write_state("stopped", "Bridge stopped by user")
     backend_request("/api/bridge/disconnect", data={"session_id": SESSION_ID})
     icon.stop()
     sys.exit(0)
 
+def on_tray_ready(icon):
+    icon.visible = True
+    write_state("tray_ready", "Tray icon is ready", {"backend": CURRENT_TRAY_BACKEND})
+    log(f"Tray icon is ready using backend: {CURRENT_TRAY_BACKEND}")
+
 def setup_tray():
+    write_state("starting", "Bridge process started")
     tray_ready, tray_error = ensure_tray_support()
     if not tray_ready:
+        write_state("headless", tray_error)
         log(f"Starting in headless mode (tray unavailable: {tray_error})")
         bridge_loop()
         return
@@ -259,8 +306,9 @@ def setup_tray():
     worker = threading.Thread(target=bridge_loop, name="bridge-loop")
     worker.start()
     try:
-        icon.run()
+        icon.run(setup=on_tray_ready)
     except Exception as exc:
+        write_state("headless", f"Tray startup failed: {exc}")
         log(f"Tray startup failed. Continuing headless: {exc}")
         while IS_RUNNING:
             time.sleep(5)
@@ -269,4 +317,5 @@ if __name__ == "__main__":
     if not SESSION_ID:
         print("❌ ERROR: SESSION_ID missing. Provide it as an argument or env var.")
         sys.exit(1)
+    write_state("starting", "Bridge bootstrap starting")
     setup_tray()

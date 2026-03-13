@@ -60,19 +60,53 @@ echo "Tray dependencies will be installed by the detached bridge process if need
 pkill -f "chatloom_bridge.py" 2>/dev/null || true
 
 echo "Launching Bridge..."
-CHATLOOM_BRIDGE_LOG=/tmp/bridge.log nohup "$PY_CMD" /tmp/chatloom_bridge.py "$SESSION_ID" "$API_URL" </dev/null >/tmp/bridge-launch.log 2>&1 &
+BRIDGE_STATE=/tmp/bridge-state.json
+rm -f "$BRIDGE_STATE"
+CHATLOOM_BRIDGE_LOG=/tmp/bridge.log CHATLOOM_BRIDGE_STATE="$BRIDGE_STATE" nohup "$PY_CMD" /tmp/chatloom_bridge.py "$SESSION_ID" "$API_URL" </dev/null >/tmp/bridge-launch.log 2>&1 &
 BRIDGE_PID=$!
 disown "$BRIDGE_PID" 2>/dev/null || true
 
 # Final Verification
-sleep 2
-if ps aux | grep -v grep | grep -q "chatloom_bridge.py"; then
-    echo "SUCCESS: Neural Node is now active."
-    echo "Background Process ID: $(pgrep -f chatloom_bridge.py | head -n 1)"
-    echo "Bridge log: /tmp/bridge.log"
-else
+TRAY_STATE=""
+TRAY_MESSAGE=""
+for _ in $(seq 1 24); do
+    if [ -f "$BRIDGE_STATE" ]; then
+        TRAY_INFO=$("$PY_CMD" - "$BRIDGE_STATE" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1], 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    print(data.get('state', ''))
+    print(data.get('message', ''))
+except Exception:
+    print("")
+    print("")
+PY
+)
+        TRAY_STATE=$(printf "%s" "$TRAY_INFO" | sed -n '1p')
+        TRAY_MESSAGE=$(printf "%s" "$TRAY_INFO" | sed -n '2p')
+    fi
+
+    if [ "$TRAY_STATE" = "tray_ready" ] || [ "$TRAY_STATE" = "headless" ]; then
+        break
+    fi
+    sleep 0.5
+done
+
+if ! ps aux | grep -v grep | grep -q "chatloom_bridge.py"; then
     echo "Bridge failed to start. View logs: cat /tmp/bridge.log"
     exit 1
+fi
+
+echo "SUCCESS: Neural Node is now active."
+echo "Background Process ID: $(pgrep -f chatloom_bridge.py | head -n 1)"
+echo "Bridge log: /tmp/bridge.log"
+if [ "$TRAY_STATE" = "tray_ready" ]; then
+    echo "Tray icon is ready."
+elif [ "$TRAY_STATE" = "headless" ]; then
+    echo "Tray icon is unavailable: $TRAY_MESSAGE"
+else
+    echo "Tray status is still starting. Check /tmp/bridge.log if the icon does not appear."
 fi
 
 echo "------------------------------------------"

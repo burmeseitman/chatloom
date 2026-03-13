@@ -65,6 +65,7 @@ const getBackendUrl = () => {
 
 const BACKEND_URL = getBackendUrl();
 const isSecure = BACKEND_URL.startsWith("https");
+const BRIDGE_ORIGIN = "Neural Bridge";
 
 const socket = io(BACKEND_URL, { 
   path: "/socket.io",
@@ -211,7 +212,7 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [status, setStatus] = useState("Exploring topics...");
   const [bridgeActive, setBridgeActive] = useState(
-    () => models.length > 0
+    () => models.some((model) => model.origin === BRIDGE_ORIGIN)
   );
   const [swarmStats, setSwarmStats] = useState({ total_nodes: 0, active_tasks: 0 });
   const [showQuitModal, setShowQuitModal] = useState(false);
@@ -242,12 +243,16 @@ function App() {
   useEffect(() => {
     if (selectedModel) {
       localStorage.setItem("chat_model", JSON.stringify(selectedModel));
+    } else {
+      localStorage.removeItem("chat_model");
     }
   }, [selectedModel]);
 
   useEffect(() => {
     if (models.length > 0) {
       localStorage.setItem("chat_models", JSON.stringify(models));
+    } else {
+      localStorage.removeItem("chat_models");
     }
   }, [models]);
 
@@ -288,30 +293,33 @@ function App() {
           const bridgedModels = res.data.models.map((m) => ({
             name: m.name,
             parameter_size: m.parameter_size,
-            origin: "Neural Bridge",
+            origin: BRIDGE_ORIGIN,
           }));
           
           setModels(bridgedModels);
           setBridgeActive(true);
 
-          if (bridgedModels.length > 0 && !selectedModel) {
-            setSelectedModel(bridgedModels[0]);
-          }
+          setSelectedModel((current) => current || bridgedModels[0] || null);
 
           if (step === "detect") {
             setStep("setup");
             fetchPersonas();
           }
         } else {
-          // Only de-activate if we are sure it's offline (e.g. repeated failure)
-          // setBridgeActive(false); 
+          setBridgeActive(false);
+          setModels((current) =>
+            current.filter((model) => model.origin !== BRIDGE_ORIGIN),
+          );
+          setSelectedModel((current) =>
+            current?.origin === BRIDGE_ORIGIN ? null : current,
+          );
         }
       } catch (e) {
-        // Silent
+        setBridgeActive(false);
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [step, sessionId, models.length]);
+  }, [step, sessionId]);
 
   const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);

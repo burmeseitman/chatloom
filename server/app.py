@@ -301,6 +301,11 @@ def bridge_status(session_id):
             "models": bridge.get('models', []),
             "last_seen": bridge.get('last_seen')
         })
+    if session_id in bridge_sessions:
+        del bridge_sessions[session_id]
+        pending_tasks.pop(session_id, None)
+        print(f"Bridge stale: {session_id}")
+        broadcast_swarm_stats()
     return jsonify({"active": False, "models": []})
 
 def get_db_connection():
