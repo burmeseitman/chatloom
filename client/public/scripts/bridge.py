@@ -12,6 +12,7 @@ API_URL = (sys.argv[2] if len(sys.argv) > 2 else os.environ.get('CHATLOOM_API', 
 OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434')
 LOG_PATH = os.environ.get('CHATLOOM_BRIDGE_LOG', os.path.join(tempfile.gettempdir(), 'bridge.log'))
 STATE_PATH = os.environ.get('CHATLOOM_BRIDGE_STATE', os.path.join(tempfile.gettempdir(), 'bridge-state.json'))
+SKIP_RUNTIME_PIP = os.environ.get('CHATLOOM_SKIP_RUNTIME_PIP') == '1'
 
 Icon = None
 Menu = None
@@ -128,6 +129,14 @@ def ensure_tray_support():
         if ok:
             log(f"Tray backend selected: {selected_backend}")
             return True, None
+
+    if SKIP_RUNTIME_PIP:
+        if sys.platform.startswith("linux") and is_gnome_like():
+            return False, (
+                "Tray dependencies are missing or AppIndicator is unavailable. "
+                "Rerun the setup command after bridge dependencies finish installing."
+            )
+        return False, f"Tray dependencies are missing: {err}"
 
     log(f"Tray dependencies missing. Attempting background install: {err}")
     try:

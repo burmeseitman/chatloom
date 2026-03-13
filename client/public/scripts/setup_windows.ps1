@@ -53,24 +53,65 @@ if (!(Get-Command $pyCmd -ErrorAction SilentlyContinue)) {
     Exit 1
 }
 
+$pyResolved = (Get-Command $pyCmd -ErrorAction SilentlyContinue).Source
+$bridgeHome = Join-Path $env:LOCALAPPDATA "ChatLoomBridge"
+$bridgeVenv = Join-Path $bridgeHome "venv"
+$bridgePython = Join-Path $bridgeVenv "Scripts\python.exe"
+$bridgePythonw = Join-Path $bridgeVenv "Scripts\pythonw.exe"
+$depsLog = Join-Path $env:TEMP "chatloom_bridge_deps.log"
+if (!(Test-Path $bridgeHome)) { New-Item -ItemType Directory -Path $bridgeHome -Force | Out-Null }
+
+if (!(Test-Path $bridgePython)) {
+    Write-Host "Creating bridge runtime..." -ForegroundColor Gray
+    & $pyResolved -m venv $bridgeVenv *> $depsLog
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Bridge runtime creation failed. Check $depsLog" -ForegroundColor Red
+        Exit 1
+    }
+}
+
+$depsReady = $false
+if (Test-Path $bridgePython) {
+    & $bridgePython -c "import importlib.util,sys;sys.exit(0 if importlib.util.find_spec('pystray') and importlib.util.find_spec('PIL') else 1)" *> $null
+    $depsReady = ($LASTEXITCODE -eq 0)
+}
+
+if (-not $depsReady) {
+    Write-Host "Installing bridge UI dependencies..." -ForegroundColor Gray
+    & $bridgePython -m ensurepip --upgrade *> $depsLog
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Unable to bootstrap pip for bridge runtime. Check $depsLog" -ForegroundColor Red
+        Exit 1
+    }
+    & $bridgePython -m pip install --upgrade pip wheel setuptools *> $depsLog
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Unable to prepare bridge runtime packages. Check $depsLog" -ForegroundColor Red
+        Exit 1
+    }
+    & $bridgePython -m pip install pystray pillow *> $depsLog
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Bridge UI dependency install failed. Check $depsLog" -ForegroundColor Red
+        Exit 1
+    }
+}
+
 Write-Host "Preparing Bridge UI..." -ForegroundColor Gray
-Write-Host "Tray dependencies will be installed by the detached bridge process if needed." -ForegroundColor DarkGray
+Write-Host "Bridge runtime: $bridgePython" -ForegroundColor DarkGray
 
 # Kill existing bridge
 Get-Process | Where-Object { $_.ProcessName -like "*python*" -and $_.CommandLine -like "*chatloom_bridge.py*" } | Stop-Process -Force -ErrorAction SilentlyContinue
 
 Write-Host "Launching Bridge..." -ForegroundColor Green
-$pyResolved = (Get-Command $pyCmd -ErrorAction SilentlyContinue).Source
-$pyw = (Get-Command pythonw -ErrorAction SilentlyContinue).Source
-if (!$pyw -and $pyResolved) {
-    $pywCandidate = Join-Path (Split-Path $pyResolved) "pythonw.exe"
-    if (Test-Path $pywCandidate) { $pyw = $pywCandidate }
-}
+$pyw = $null
+if (Test-Path $bridgePythonw) { $pyw = $bridgePythonw }
+elseif (Test-Path $bridgePython) { $pyResolved = $bridgePython }
+else { $pyResolved = (Get-Command $pyCmd -ErrorAction SilentlyContinue).Source }
 
 $env:CHATLOOM_BRIDGE_LOG = Join-Path $env:TEMP "bridge.log"
 $bridgeState = Join-Path $env:TEMP "bridge-state.json"
 if (Test-Path $bridgeState) { Remove-Item $bridgeState -Force -ErrorAction SilentlyContinue }
 $env:CHATLOOM_BRIDGE_STATE = $bridgeState
+$env:CHATLOOM_SKIP_RUNTIME_PIP = "1"
 if ($pyw) {
     Start-Process $pyw -ArgumentList "`"$bridgePath`" `"$SESSION_ID`" `"$API_URL`"" -WorkingDirectory $env:TEMP
 } else {

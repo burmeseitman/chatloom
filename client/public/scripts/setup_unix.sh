@@ -53,8 +53,44 @@ if [ -z "$PY_CMD" ]; then
     exit 1
 fi
 
+BRIDGE_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/chatloom-bridge"
+BRIDGE_VENV="$BRIDGE_HOME/venv"
+BRIDGE_PY="$BRIDGE_VENV/bin/python"
+DEPS_LOG=/tmp/chatloom_bridge_deps.log
+
+mkdir -p "$BRIDGE_HOME"
+
+if [ ! -x "$BRIDGE_PY" ]; then
+    echo "Creating bridge runtime..."
+    if ! "$PY_CMD" -m venv "$BRIDGE_VENV" >"$DEPS_LOG" 2>&1; then
+        echo "Bridge runtime creation failed. View logs: cat $DEPS_LOG"
+        exit 1
+    fi
+fi
+
+if ! "$BRIDGE_PY" - <<'PY' >/dev/null 2>&1
+import importlib.util, sys
+required = ("pystray", "PIL")
+sys.exit(0 if all(importlib.util.find_spec(mod) for mod in required) else 1)
+PY
+then
+    echo "Installing bridge UI dependencies..."
+    if ! "$BRIDGE_PY" -m ensurepip --upgrade >"$DEPS_LOG" 2>&1; then
+        echo "Unable to bootstrap pip for bridge runtime. View logs: cat $DEPS_LOG"
+        exit 1
+    fi
+    if ! "$BRIDGE_PY" -m pip install --upgrade pip wheel setuptools >"$DEPS_LOG" 2>&1; then
+        echo "Unable to prepare bridge runtime packages. View logs: cat $DEPS_LOG"
+        exit 1
+    fi
+    if ! "$BRIDGE_PY" -m pip install pystray pillow >"$DEPS_LOG" 2>&1; then
+        echo "Bridge UI dependency install failed. View logs: cat $DEPS_LOG"
+        exit 1
+    fi
+fi
+
 echo "Preparing Bridge UI..."
-echo "Tray dependencies will be installed by the detached bridge process if needed."
+echo "Bridge runtime: $BRIDGE_PY"
 
 # Kill existing bridge
 pkill -f "chatloom_bridge.py" 2>/dev/null || true
@@ -62,7 +98,7 @@ pkill -f "chatloom_bridge.py" 2>/dev/null || true
 echo "Launching Bridge..."
 BRIDGE_STATE=/tmp/bridge-state.json
 rm -f "$BRIDGE_STATE"
-CHATLOOM_BRIDGE_LOG=/tmp/bridge.log CHATLOOM_BRIDGE_STATE="$BRIDGE_STATE" nohup "$PY_CMD" /tmp/chatloom_bridge.py "$SESSION_ID" "$API_URL" </dev/null >/tmp/bridge-launch.log 2>&1 &
+CHATLOOM_BRIDGE_LOG=/tmp/bridge.log CHATLOOM_BRIDGE_STATE="$BRIDGE_STATE" CHATLOOM_SKIP_RUNTIME_PIP=1 nohup "$BRIDGE_PY" /tmp/chatloom_bridge.py "$SESSION_ID" "$API_URL" </dev/null >/tmp/bridge-launch.log 2>&1 &
 BRIDGE_PID=$!
 disown "$BRIDGE_PID" 2>/dev/null || true
 
