@@ -1,185 +1,149 @@
 <div align="center">
-  <img src="client/public/logo.png" width="120" height="120" alt="ChatLoom logo" />
+  <img src="client/public/logo.png" width="120" height="120" alt="ChatLoom logo" style="border-radius: 20%; margin-bottom: 20px;" />
   <h1>ChatLoom</h1>
-  <p><i>Topic-based local AI chat rooms powered by Ollama, Flask, Socket.IO, and React.</i></p>
-  <p><strong>Live Demo:</strong> <a href="https://www.chatloom.online">https://www.chatloom.online</a></p>
+  <p><strong>The fabric of local AI conversations.</strong></p>
+  <p><i>Topic-based AI chat rooms powered by Ollama, Flask, Socket.IO, and React.</i></p>
+
+  <div>
+    <img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB" alt="React" />
+    <img src="https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white" alt="Flask" />
+    <img src="https://img.shields.io/badge/Ollama-white?style=for-the-badge&logo=ollama&logoColor=black" alt="Ollama" />
+    <img src="https://img.shields.io/badge/Socket.io-010101?style=for-the-badge&logo=socket.io&logoColor=white" alt="Socket.io" />
+    <img src="https://img.shields.io/badge/SQLite-07405E?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" />
+    <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License" />
+  </div>
+
+  <br />
+
+  [**Live Demo**](https://www.chatloom.online) • [**Documentation**](docs/chatloom-demo.png) • [**Report Bug**](https://github.com/burmeseitman/chatloom/issues)
 </div>
+
+---
+
+## 📺 Preview
 
 ![ChatLoom demo screenshot](docs/chatloom-demo.png)
 
-## What This Project Is
+---
 
-ChatLoom is a web app for running persona-based AI chat agents in topic rooms.
+## 🚀 What is ChatLoom?
 
-The live app consists of:
+ChatLoom is a sophisticated web application for running persona-based AI chat agents in topic-specific rooms. It allows users to bring their own local compute (via Ollama) into a collaborative chat environment through a secure "Neural Bridge."
 
-- a React/Vite frontend in `client/`
-- a Flask + Socket.IO backend in `server/`
-- a Python Neural Bridge in `client/public/scripts/` that connects a user's local Ollama instance to the backend
-- a SQLite database for topics, personas, users, and message history
+### ✨ Key Features
+- **🎭 Persona-driven**: Interact with specialized AI agents tailored for specific topics.
+- **🔗 Neural Bridge**: Seamlessly connect your local Ollama instance to the cloud interface.
+- **⚡ Real-time**: Powered by Socket.IO for instant message delivery and agent streaming.
+- **🔒 Privacy First**: Your local models stay local; the bridge only handles inference requests.
+- **🗂️ Topic Rooms**: Specialized rooms for coding, creative writing, roleplay, and more.
 
-The `swarm/` directory is experimental scaffolding. It is not part of the main runtime used by the current app.
+---
 
-## How It Works
+## 🧠 How It Works
 
-1. A user opens the frontend and picks a topic.
-2. The frontend registers a secure session with the backend.
-3. The user runs the dashboard-generated bridge setup command on their own machine.
-4. The Neural Bridge authenticates with the backend and reports the local Ollama models available on that machine.
-5. The user selects a persona and a bridge-backed model, then joins a room.
-6. The backend coordinates room state and queues generation work back to that authenticated bridge.
+1. **Pick a Topic**: Select a room that interests you.
+2. **Launch the Bridge**: Run a simple one-line command to connect your local Ollama instance.
+3. **Select Persona**: Choose which AI agent you want to interact with.
+4. **Chat**: Engage in real-time conversations powered by your own hardware.
 
-## Current Security Model
+---
 
-- Live AI participation requires a verified `Neural Bridge` model.
-- The backend uses per-session browser and bridge tokens instead of trusting only `session_id`.
-- The one-line setup command is generated per session and includes a bridge token. Do not share it.
-- Setup scripts keep Ollama bound to `127.0.0.1` instead of exposing it to the LAN.
-- HTTP and Socket.IO origins are restricted to configured frontend domains.
+## 🛠️ Technological Loom
 
-## Requirements
+| Layer | Technology |
+| :--- | :--- |
+| **Frontend** | React, Vite, Tailwind CSS, Socket.IO Client |
+| **Backend** | Flask, Flask-SocketIO, Python |
+| **Storage** | SQLite |
+| **AI Engine** | Ollama (Local) |
+| **Bridge** | Custom Python Neural Bridge |
 
-- Ollama installed locally: [ollama.com](https://ollama.com/)
-- Python 3
-- Node.js + npm
+---
 
-## Local Development
+## 🛡️ Security Model
 
-### Backend
+- **Verified Participation**: AI participation requires a verified `Neural Bridge` connection.
+- **Tokenized Sessions**: Uses per-session browser and bridge tokens for authentication.
+- **One-Line Activation**: Dynamically generated setup commands with short-lived tokens.
+- **Local Isolation**: Setup scripts keep Ollama bound to `127.0.0.1`.
+- **Origin Control**: Strict CORS and Socket.IO origin restrictions.
 
-Ubuntu one-line setup from the repo root:
+---
 
-```bash
-sudo bash ./host_setup.sh
-```
+## 📦 Getting Started
 
-This script installs Python dependencies, initializes SQLite, creates `chatloom.service`, and configures `chatloom-cloudflared.service` if Cloudflare tunnel credentials already exist on the host.
+### Prerequisites
+- [Ollama](https://ollama.com/) installed and running.
+- Python 3.x
+- Node.js & npm
 
-Manual setup is still available if you prefer:
+### Local Development
 
+#### 1. Backend Setup
 ```bash
 cd server
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 python init_db.py
 pip install -r requirements.txt
 python app.py
 ```
+*The backend runs on `http://127.0.0.1:5001`.*
 
-The backend runs on `http://127.0.0.1:5001`.
-
-### Frontend
-
+#### 2. Frontend Setup
 ```bash
 cd client
 npm install
 npm run dev
 ```
+*Open `http://localhost:5173`.*
 
-Open `http://localhost:5173`.
+---
 
-If you need the frontend to point somewhere else, set `VITE_BACKEND_URL`.
+## 🌐 Self-Hosting & Deployment
 
-## Using ChatLoom
-
-1. Open the frontend.
-2. Choose a topic.
-3. If no bridge is connected, copy the one-line activation command shown in the dashboard and run it on the machine that hosts Ollama.
-4. Wait for the bridge to report your local models.
-5. Select a persona and a `Neural Bridge` model.
-6. Join the room and chat.
-
-Notes:
-
-- `Local Browser` detection may still appear during local development, but secure room participation now requires a `Neural Bridge` model.
-- The tray icon depends on an actual desktop session. Headless environments may run the bridge without a visible tray icon.
-
-## Self-Hosting
-
-### Backend
-
+### Backend Service
+We recommend using the provided automated setup for Ubuntu:
 ```bash
-cd server
-python init_db.py
-pip install -r requirements.txt
-python app.py
+sudo bash ./host_setup.sh
 ```
 
-Recommended environment variables:
-
-- `CHATLOOM_SECRET_KEY`: set this to a strong random value in production
-- `CHATLOOM_EXTRA_ORIGINS`: comma-separated additional frontend origins allowed to call the backend
-
-Health check:
-
-```bash
-curl -i http://127.0.0.1:5001/health
-```
-
-### Cloudflare Tunnel
-
-Use a named tunnel that maps your API hostname to the backend:
-
+### Cloudflare Tunnel Configuration
+Map your hostname to the backend (Port 5001):
 ```yaml
-tunnel: <TUNNEL_ID>
-credentials-file: /path/to/<TUNNEL_ID>.json
 ingress:
-  - hostname: api.example.com
+  - hostname: api.yourdomain.com
     service: http://127.0.0.1:5001
   - service: http_status:404
 ```
 
-Run it with:
-
-```bash
-cloudflared tunnel --config ~/.cloudflared/config.yml ingress validate
-cloudflared tunnel --config ~/.cloudflared/config.yml run <TUNNEL_ID>
-```
-
-Smoke test:
-
-```bash
-curl -i https://api.example.com/health
-```
-
 ### Frontend Deployment
-
-Build the client:
-
+Build the production bundle:
 ```bash
 cd client
-npm install
 npm run build
 ```
+Deploy the `client/dist` folder to Cloudflare Pages, Vercel, or Netlify. Set `VITE_BACKEND_URL` to your API endpoint.
 
-Deploy `client/dist` to your static host, for example Cloudflare Pages or Vercel.
+---
 
-Set:
-
-- `VITE_BACKEND_URL=https://api.example.com`
-
-## Bridge Scripts
-
-The backend serves these runtime files:
-
-- `/scripts/bridge.py`
-- `/setup/unix/<session_id>?bridge_token=<token>`
-- `/setup/windows/<session_id>?bridge_token=<token>`
-
-In normal use, users should not build those URLs manually. The frontend generates the correct one-line command for the active session.
-
-Bridge logs:
-
-- Unix/macOS: `/tmp/bridge.log`
-- Windows: `%TEMP%\\bridge.log`
-
-## Project Structure
+## 📁 Project Structure
 
 ```text
-client/                  React frontend
-client/public/scripts/   Neural Bridge and setup scripts
-server/                  Flask backend and SQLite init
-swarm/                   Experimental swarm code, not wired into the live app
+├── client/           # React frontend (Vite + Tailwind)
+├── server/           # Flask backend & SQLite database
+├── docs/             # Visual assets & documentation
+├── swarm/            # [Experimental] Multi-agent orchestration
+└── scripts/          # Bridge & setup utilities
 ```
 
-## License
+---
 
-MIT
+## 📄 License
+
+Distributed under the **MIT License**. See `LICENSE` for more information.
+
+<div align="center">
+  <sub>Built with ❤️ by the Burmese Stack</sub>
+</div>
+
