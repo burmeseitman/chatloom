@@ -133,8 +133,7 @@ Deploy the `client/dist` folder to Cloudflare Pages, Vercel, or Netlify. Set `VI
 ├── client/           # React frontend (Vite + Tailwind)
 ├── server/           # Flask backend & SQLite database
 ├── docs/             # Visual assets & documentation
-├── swarm/            # [Experimental] Multi-agent orchestration
-└── scripts/          # Bridge & setup utilities
+└── host_setup.sh     # Automated host setup scripts
 ```
 
 ---
