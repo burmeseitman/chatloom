@@ -140,6 +140,17 @@ bootstrap_nodes = [
     "https://chatloom.online" # Self as primary bootstrap
 ]
 
+@app.route('/', methods=['GET'], strict_slashes=False)
+def root_status():
+    """Simple root endpoint so tunnel smoke tests return 200 instead of 404."""
+    return jsonify({
+        "status": "healthy",
+        "service": "ChatLoom Backend",
+        "socket_path": "/socket.io",
+        "health": "/health",
+        "timestamp": time.time()
+    })
+
 @app.route('/api/swarm/bootstrap', methods=['GET'])
 def get_bootstrap_nodes():
     """Return list of active peers to join the mesh network."""

@@ -98,9 +98,10 @@ if ($s) {
 
 # --- 7. CLOUDFLARE SYNC ---
 Write-Host "[5/6] Syncing Tunnel..." -ForegroundColor Gray
-# We'll skip the Read-Host for automation if possible, but keep it for user choice
-$TUNNEL_NAME = "chatloom-server" # Standardize
+$TUNNEL_HOSTNAME = if ($env:CHATLOOM_TUNNEL_HOSTNAME) { $env:CHATLOOM_TUNNEL_HOSTNAME } else { "api.chatloom.online" }
 $CF_SRV = "ChatLoomTunnel"
+$CF_WORK_DIR = Join-Path $BASE_DIR ".cloudflared"
+if (!(Test-Path $CF_WORK_DIR)) { New-Item -ItemType Directory -Path $CF_WORK_DIR -Force | Out-Null }
 
 $ts = Get-Service $CF_SRV -ErrorAction SilentlyContinue
 if ($ts) {
@@ -118,10 +119,42 @@ if (!$cf_bin) {
 
 $cf_cred = Get-ChildItem -Path "$env:USERPROFILE\.cloudflared\*.json" | Select-Object -First 1
 if ($cf_cred) {
-    & $NSSM install $CF_SRV "$cf_bin" "tunnel --cred-file `"$($cf_cred.FullName)`" run --url http://127.0.0.1:5001 $TUNNEL_NAME"
+    $tunnelMeta = Get-Content -Path $cf_cred.FullName -Raw | ConvertFrom-Json
+    $tunnelId = $tunnelMeta.TunnelID
+    $cf_cred_copy = Join-Path $CF_WORK_DIR "$tunnelId.json"
+    $cf_config = Join-Path $CF_WORK_DIR "config.yml"
+
+    if (!$tunnelId) {
+        Write-Host "❌ Could not read TunnelID from $($cf_cred.FullName)" -ForegroundColor Red
+        exit
+    }
+
+    Copy-Item -Path $cf_cred.FullName -Destination $cf_cred_copy -Force
+
+    @"
+tunnel: $tunnelId
+credentials-file: $cf_cred_copy
+ingress:
+  - hostname: $TUNNEL_HOSTNAME
+    service: http://127.0.0.1:5001
+  - service: http_status:404
+"@ | Set-Content -Path $cf_config -Encoding utf8
+
+    & $cf_bin tunnel --config "$cf_config" ingress validate
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ cloudflared ingress validation failed. Check $cf_config" -ForegroundColor Red
+        exit
+    }
+
+    & $NSSM install $CF_SRV "$cf_bin"
+    & $NSSM set $CF_SRV AppParameters "tunnel --config `"$cf_config`" run $tunnelId"
+    & $NSSM set $CF_SRV AppDirectory "$BASE_DIR"
+    & $NSSM set $CF_SRV AppStdout "$BASE_DIR\cloudflared_out.log"
+    & $NSSM set $CF_SRV AppStderr "$BASE_DIR\cloudflared_err.log"
     & $NSSM set $CF_SRV ObjectName LocalSystem
     & $NSSM start $CF_SRV 2>$null
     Write-Host "✅ Tunnel Synced." -ForegroundColor Green
+    Write-Host "ℹ️  Ensure DNS for $TUNNEL_HOSTNAME points to tunnel $tunnelId in Cloudflare Zero Trust." -ForegroundColor Yellow
 }
 
 # --- 8. FINAL STATUS ---
@@ -134,4 +167,3 @@ $stColor = if ($stText -eq "Running") { "Green" } else { "Red" }
 Write-Host "FINAL STATUS: $SERVICE_NAME is $stText" -ForegroundColor $stColor
 Write-Host "🐉 Congratulations! ChatLoom Server is fixed and running." -ForegroundColor Green
 Start-Sleep -Seconds 5
-

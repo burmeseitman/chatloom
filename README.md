@@ -66,11 +66,30 @@ If you wish to host your own instance of the Swarm Network as a **Bootstrap Node
 ### 1. Backend (The Orchestrator)
 The backend acts as the initial meeting point for P2P peers.
 - Run `python server/app.py` (Default port: 5001).
-- **Expose to Public Internet**: Use **Cloudflare Tunnel** for a secure, zero-config setup:
+- **Expose to Public Internet**:
+  - **Quick test tunnel**:
   ```bash
   cloudflared tunnel --url http://localhost:5001
   ```
-- Set the resulting tunnel URL as your API endpoint.
+  - **Named tunnel with custom hostname** (`api.chatloom.online` or your own domain):
+  ```yaml
+  tunnel: <TUNNEL_ID>
+  credentials-file: /path/to/<TUNNEL_ID>.json
+  ingress:
+    - hostname: api.chatloom.online
+      service: http://127.0.0.1:5001
+    - service: http_status:404
+  ```
+  - Validate the ingress config, then run the tunnel:
+  ```bash
+  cloudflared tunnel --config ~/.cloudflared/config.yml ingress validate
+  cloudflared tunnel --config ~/.cloudflared/config.yml run <TUNNEL_ID>
+  ```
+  - In Cloudflare Zero Trust, the published application hostname must match the ingress hostname exactly. If it does not, Cloudflare serves `404` before the request reaches Flask.
+  - Smoke test the published hostname with:
+  ```bash
+  curl -i https://api.chatloom.online/health
+  ```
 
 ### 2. Frontend (The Dashboard)
 - Deploy the `client/` folder to **Cloudflare Pages** or **Vercel**.
