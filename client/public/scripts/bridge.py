@@ -9,6 +9,7 @@ import urllib.request, urllib.error, json, time, sys, os, threading, subprocess,
 VERSION = "2.3"
 SESSION_ID = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('CHATLOOM_SESSION', '')
 API_URL = (sys.argv[2] if len(sys.argv) > 2 else os.environ.get('CHATLOOM_API', 'https://chatloom.online')).rstrip('/')
+BRIDGE_TOKEN = os.environ.get('CHATLOOM_BRIDGE_TOKEN', '')
 OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434')
 LOG_PATH = os.environ.get('CHATLOOM_BRIDGE_LOG', os.path.join(tempfile.gettempdir(), 'bridge.log'))
 STATE_PATH = os.environ.get('CHATLOOM_BRIDGE_STATE', os.path.join(tempfile.gettempdir(), 'bridge-state.json'))
@@ -191,7 +192,11 @@ def ollama_request(path, method="GET", data=None, timeout=10):
 def backend_request(path, method="POST", data=None, timeout=10):
     url = f"{API_URL}{path}"
     try:
-        headers = {"Content-Type": "application/json", "User-Agent": f"Swarm-Bridge/{VERSION}"}
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": f"Swarm-Bridge/{VERSION}",
+            "X-Chatloom-Bridge-Token": BRIDGE_TOKEN,
+        }
         if data:
             req = urllib.request.Request(url, data=json.dumps(data).encode(), headers=headers)
         else:
@@ -324,6 +329,9 @@ def setup_tray():
 if __name__ == "__main__":
     if not SESSION_ID:
         print("❌ ERROR: SESSION_ID missing. Provide it as an argument or env var.")
+        sys.exit(1)
+    if not BRIDGE_TOKEN:
+        print("❌ ERROR: BRIDGE_TOKEN missing. Re-run the ChatLoom setup command.")
         sys.exit(1)
     write_state("starting", "Bridge bootstrap starting")
     setup_tray()

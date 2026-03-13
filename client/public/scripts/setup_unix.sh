@@ -28,8 +28,8 @@ if curl -s "http://127.0.0.1:11434/api/tags" > /dev/null; then
     echo "Ollama is already active."
 else
     echo "Starting Ollama..."
-    export OLLAMA_HOST="0.0.0.0:11434"
-    export OLLAMA_ORIGINS="*"
+    export OLLAMA_HOST="127.0.0.1:11434"
+    unset OLLAMA_ORIGINS
     nohup "$OLLAMA_CMD" serve >/tmp/ollama.log 2>&1 &
     sleep 3
 fi
@@ -44,7 +44,7 @@ fi
 
 # 4. Neural Bridge Launch
 echo "Syncing Bridge Logic..."
-curl -sSL "$API_URL/scripts/bridge.py" -o /tmp/chatloom_bridge.py
+curl -fsSL "$API_URL/scripts/bridge.py" -o /tmp/chatloom_bridge.py
 
 # Detect Python
 PY_CMD=$(command -v python3 || command -v python)

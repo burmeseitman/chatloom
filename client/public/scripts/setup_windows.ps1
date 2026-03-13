@@ -28,8 +28,8 @@ try {
 
 if (!$ollamaRunning) {
     Write-Host "Starting Ollama..." -ForegroundColor Yellow
-    $env:OLLAMA_HOST = "0.0.0.0:11434"
-    $env:OLLAMA_ORIGINS = "*"
+    $env:OLLAMA_HOST = "127.0.0.1:11434"
+    Remove-Item Env:OLLAMA_ORIGINS -ErrorAction SilentlyContinue
     Start-Process $ollamaExe -ArgumentList "serve" -WindowStyle Hidden
     Start-Sleep -Seconds 3
 }

@@ -6,7 +6,7 @@ import {
 import { motion } from 'framer-motion';
 
 const SwarmMonitor = ({ 
-  swarmSize = 5, 
+  swarmSize = 0, 
   activeTasks = 0, 
   consensusState = 87,
   bridgeActive = false,

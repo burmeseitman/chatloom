@@ -2,7 +2,9 @@ from gevent import monkey
 monkey.patch_all()
 from gevent.pywsgi import WSGIServer
 from geventwebsocket.handler import WebSocketHandler
+import hmac
 import os
+import shlex
 import sqlite3
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
@@ -11,10 +13,110 @@ import time
 import random
 from datetime import datetime
 import re
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 # Security: Load secret key from environment variable
 app.config['SECRET_KEY'] = os.getenv('CHATLOOM_SECRET_KEY', 'dev-secret-key-123')
+
+CLIENT_TOKEN_HEADER = "X-Chatloom-Client-Token"
+BRIDGE_TOKEN_HEADER = "X-Chatloom-Bridge-Token"
+SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{12,128}$")
+SESSION_TOKEN_PATTERN = re.compile(r"^[A-Fa-f0-9]{32,128}$")
+DEFAULT_ALLOWED_ORIGINS = [
+    "https://chatloom.online",
+    "https://www.chatloom.online",
+    "https://api.chatloom.online",
+]
+LOCAL_DEV_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+EXTRA_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CHATLOOM_EXTRA_ORIGINS", "").split(",")
+    if origin.strip()
+]
+ALLOWED_ORIGINS = sorted(
+    set(DEFAULT_ALLOWED_ORIGINS + LOCAL_DEV_ORIGINS + EXTRA_ALLOWED_ORIGINS)
+)
+
+session_credentials = {}  # {session_id: {"client_token": str, "bridge_token": str, "last_seen": ts}}
+
+def is_valid_session_id(value):
+    return isinstance(value, str) and bool(SESSION_ID_PATTERN.fullmatch(value))
+
+def is_valid_session_token(value):
+    return isinstance(value, str) and bool(SESSION_TOKEN_PATTERN.fullmatch(value))
+
+def is_allowed_origin(origin):
+    if not origin or not isinstance(origin, str):
+        return False
+
+    if origin in ALLOWED_ORIGINS:
+        return True
+
+    try:
+        parsed = urlparse(origin)
+    except Exception:
+        return False
+
+    return (
+        parsed.scheme == "http"
+        and parsed.hostname in {"localhost", "127.0.0.1"}
+        and parsed.port in {3000, 4173, 5173}
+    )
+
+def powershell_quote(value):
+    return "'" + value.replace("'", "''") + "'"
+
+def read_request_json():
+    return request.get_json(silent=True) or {}
+
+def get_session_credentials(session_id):
+    if not is_valid_session_id(session_id):
+        return None
+    return session_credentials.get(session_id)
+
+def validate_client_session(session_id, client_token):
+    credentials = get_session_credentials(session_id)
+    if not credentials or not is_valid_session_token(client_token):
+        return None
+
+    if not hmac.compare_digest(credentials.get("client_token", ""), client_token):
+        return None
+
+    credentials["last_seen"] = time.time()
+    return credentials
+
+def validate_bridge_session(session_id, bridge_token):
+    credentials = get_session_credentials(session_id)
+    if not credentials or not is_valid_session_token(bridge_token):
+        return None
+
+    if not hmac.compare_digest(credentials.get("bridge_token", ""), bridge_token):
+        return None
+
+    credentials["last_seen"] = time.time()
+    return credentials
+
+def authenticate_client_request(session_id=None):
+    if session_id is None:
+        data = read_request_json()
+        session_id = data.get("session_id") or request.args.get("session_id")
+
+    return validate_client_session(session_id, request.headers.get(CLIENT_TOKEN_HEADER))
+
+def authenticate_bridge_request(session_id=None):
+    if session_id is None:
+        data = read_request_json()
+        session_id = data.get("session_id") or request.args.get("session_id")
+
+    return validate_bridge_session(session_id, request.headers.get(BRIDGE_TOKEN_HEADER))
 
 # --- SECURITY PROTECTION ---
 PROMPT_INJECTION_PATTERNS = [
@@ -72,35 +174,23 @@ def check_poisoning(session_id, text):
 # ---------------------------
 
 
-# ---------------------------
-# PRODUCTION CORS CONFIGURATION
-# ---------------------------
-# Allow your production frontend and any local dev instances
-# --- PRODUCTION SECURITY: STICKY CORS ---
-# Only allow your verified domains and local development
-ALLOWED_ORIGINS = [
-    "https://chatloom.online",
-    "https://www.chatloom.online",
-    "https://api.chatloom.online",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173"
-]
-
 @app.after_request
 def after_request(response):
     origin = request.headers.get('Origin')
-    if origin:
-        if origin in ALLOWED_ORIGINS or origin.endswith('.pages.dev') or 'localhost' in origin or '127.0.0.1' in origin:
-            response.headers.add('Access-Control-Allow-Origin', origin)
-            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-            response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
+    if origin and is_allowed_origin(origin):
+        response.headers.add('Access-Control-Allow-Origin', origin)
+        response.headers.add(
+            'Access-Control-Allow-Headers',
+            f'Content-Type,Authorization,{CLIENT_TOKEN_HEADER},{BRIDGE_TOKEN_HEADER}',
+        )
+        response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
 # Initialize SocketIO with authorized origins
 socketio = SocketIO(
     app, 
-    cors_allowed_origins="*", 
+    cors_allowed_origins=ALLOWED_ORIGINS,
     async_mode='gevent',
     path='/socket.io',
     logger=False, # Disable logging in production for performance
@@ -113,12 +203,33 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
 bridge_sessions = {}   # {session_id: {"models": [...], "last_seen": timestamp}}
 pending_tasks = {}     # {session_id: [{task_id, model, prompt, ...}]}
 task_results = {}      # {task_id: {"status", "response", ...}}
+BRIDGE_TTL_SECONDS = 15
+
+def prune_stale_bridges():
+    """Remove stale bridge sessions and queued tasks."""
+    now = time.time()
+    stale_session_ids = [
+        sid
+        for sid, data in bridge_sessions.items()
+        if now - data.get('last_seen', 0) >= BRIDGE_TTL_SECONDS
+    ]
+
+    for sid in stale_session_ids:
+        del bridge_sessions[sid]
+        pending_tasks.pop(sid, None)
+        print(f"Bridge stale: {sid}")
+
+    return bool(stale_session_ids)
 
 def broadcast_swarm_stats():
     """Broadcast global swarm metrics (counts nodes and thinking tasks) to all clients."""
-    now = time.time()
-    # Count unique active bridges (heartbeat within 30s)
-    total_nodes = len([sid for sid, data in bridge_sessions.items() if now - data.get('last_seen', 0) < 30])
+    prune_stale_bridges()
+    # Count active bridges that currently expose at least one local model
+    total_nodes = len([
+        sid
+        for sid, data in bridge_sessions.items()
+        if data.get('models')
+    ])
     
     # Count active tasks across all rooms
     active_tasks = 0
@@ -157,6 +268,35 @@ def get_bootstrap_nodes():
         "active_peers": list(swarm_peers.keys())[:10]
     })
 
+@app.route('/api/session/register', methods=['POST'])
+def register_session():
+    """Register or refresh browser-owned session credentials."""
+    data = read_request_json()
+    session_id = data.get("session_id")
+    client_token = data.get("client_token")
+    bridge_token = data.get("bridge_token")
+
+    if not (
+        is_valid_session_id(session_id)
+        and is_valid_session_token(client_token)
+        and is_valid_session_token(bridge_token)
+    ):
+        return jsonify({"status": "error", "message": "Invalid session credentials"}), 400
+
+    existing = session_credentials.get(session_id)
+    if existing and not hmac.compare_digest(existing.get("client_token", ""), client_token):
+        return jsonify({
+            "status": "error",
+            "message": "Session is already registered with different credentials",
+        }), 409
+
+    session_credentials[session_id] = {
+        "client_token": client_token,
+        "bridge_token": bridge_token,
+        "last_seen": time.time(),
+    }
+    return jsonify({"status": "success"})
+
 @app.route('/api/swarm/announce', methods=['POST'])
 def announce_peer():
     """Register a new peer in the swarm."""
@@ -173,9 +313,16 @@ def announce_peer():
 
 @app.route('/setup/<platform>/<session_id>', methods=['GET'])
 def serve_setup_script(platform, session_id):
+    if not is_valid_session_id(session_id):
+        return jsonify({"error": "Invalid session"}), 400
+
     if platform not in ["unix", "windows"]:
         return "Invalid platform", 400
-        
+
+    bridge_token = request.args.get("bridge_token", "")
+    if not validate_bridge_session(session_id, bridge_token):
+        return jsonify({"error": "Unauthorized bridge setup request"}), 401
+
     script_name = "setup_unix.sh" if platform == "unix" else "setup_windows.ps1"
     script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client', 'public', 'scripts', script_name)
     
@@ -193,10 +340,18 @@ def serve_setup_script(platform, session_id):
         api_origin = f"{proto}://{host}".rstrip("/")
             
         if platform == "unix":
-            injection = f'\nexport CHATLOOM_SESSION="{session_id}"\nexport CHATLOOM_API="{api_origin}"\n'
+            injection = (
+                f"\nexport CHATLOOM_SESSION={shlex.quote(session_id)}\n"
+                f"export CHATLOOM_API={shlex.quote(api_origin)}\n"
+                f"export CHATLOOM_BRIDGE_TOKEN={shlex.quote(bridge_token)}\n"
+            )
             content = content.replace('#!/bin/bash', '#!/bin/bash' + injection)
         else:
-            injection = f'$env:CHATLOOM_SESSION="{session_id}"\n$env:CHATLOOM_API="{api_origin}"\n'
+            injection = (
+                f"$env:CHATLOOM_SESSION={powershell_quote(session_id)}\n"
+                f"$env:CHATLOOM_API={powershell_quote(api_origin)}\n"
+                f"$env:CHATLOOM_BRIDGE_TOKEN={powershell_quote(bridge_token)}\n"
+            )
             content = injection + content
             
         return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
@@ -238,11 +393,13 @@ def serve_bridge_script():
 @app.route('/api/bridge/heartbeat', methods=['POST'], strict_slashes=False)
 def bridge_heartbeat():
     """Receive heartbeat from local bridge with model data."""
-    data = request.json
+    data = read_request_json()
     session_id = data.get('session_id')
     models = data.get('models', [])
     if not session_id:
         return jsonify({"status": "error", "message": "Missing session_id"}), 400
+    if not authenticate_bridge_request(session_id):
+        return jsonify({"status": "error", "message": "Unauthorized bridge session"}), 401
     
     bridge_sessions[session_id] = {
         "models": models,
@@ -259,6 +416,8 @@ def bridge_poll():
     session_id = request.args.get('session_id')
     if not session_id:
         return jsonify({"task": None})
+    if not authenticate_bridge_request(session_id):
+        return jsonify({"error": "Unauthorized bridge session"}), 401
     
     tasks = pending_tasks.get(session_id, [])
     if tasks:
@@ -269,7 +428,13 @@ def bridge_poll():
 @app.route('/api/bridge/result', methods=['POST'], strict_slashes=False)
 def bridge_result():
     """Receive generation result from bridge."""
-    data = request.json
+    data = read_request_json()
+    session_id = data.get('session_id')
+    if not session_id:
+        return jsonify({"status": "error", "message": "Missing session_id"}), 400
+    if not authenticate_bridge_request(session_id):
+        return jsonify({"status": "error", "message": "Unauthorized bridge session"}), 401
+
     task_id = data.get('task_id')
     if task_id:
         task_results[task_id] = {
@@ -283,10 +448,15 @@ def bridge_result():
 @app.route('/api/bridge/disconnect', methods=['POST'], strict_slashes=False)
 def bridge_disconnect():
     """Bridge notifies it is going offline."""
-    data = request.json
+    data = read_request_json()
     session_id = data.get('session_id')
+    if not session_id:
+        return jsonify({"status": "error", "message": "Missing session_id"}), 400
+    if not authenticate_bridge_request(session_id):
+        return jsonify({"status": "error", "message": "Unauthorized bridge session"}), 401
     if session_id and session_id in bridge_sessions:
         del bridge_sessions[session_id]
+        pending_tasks.pop(session_id, None)
         print(f"Bridge disconnected: {session_id}")
         broadcast_swarm_stats()
     return jsonify({"status": "success"})
@@ -294,18 +464,18 @@ def bridge_disconnect():
 @app.route('/api/bridge/status/<session_id>', methods=['GET'])
 def bridge_status(session_id):
     """Check if a bridge is active for this session."""
+    if not authenticate_client_request(session_id):
+        return jsonify({"error": "Unauthorized session"}), 401
+    if prune_stale_bridges():
+        broadcast_swarm_stats()
+
     bridge = bridge_sessions.get(session_id)
-    if bridge and (time.time() - bridge.get('last_seen', 0)) < 15:
+    if bridge:
         return jsonify({
             "active": True,
             "models": bridge.get('models', []),
             "last_seen": bridge.get('last_seen')
         })
-    if session_id in bridge_sessions:
-        del bridge_sessions[session_id]
-        pending_tasks.pop(session_id, None)
-        print(f"Bridge stale: {session_id}")
-        broadcast_swarm_stats()
     return jsonify({"active": False, "models": []})
 
 def get_db_connection():
@@ -322,24 +492,56 @@ def get_setting(key, default=None):
     except:
         return default
 
+def queue_bridge_generation(session_id, model, prompt, system="", options=None, timeout_seconds=200):
+    """Queue a task for an authenticated bridge and wait for its result."""
+    bridge = bridge_sessions.get(session_id)
+    if not bridge or (time.time() - bridge.get('last_seen', 0)) >= BRIDGE_TTL_SECONDS:
+        return None, "No active Neural Bridge for this session."
+
+    import uuid
+
+    task_id = str(uuid.uuid4())[:8]
+    task = {
+        "task_id": task_id,
+        "model": model,
+        "prompt": prompt,
+        "system": system,
+        "options": options or {},
+    }
+    pending_tasks.setdefault(session_id, []).append(task)
+    print(f"Generation queued for bridge: {task_id}")
+
+    max_checks = max(1, int(timeout_seconds / 0.5))
+    for _ in range(max_checks):
+        result = task_results.pop(task_id, None)
+        if result:
+            if result['status'] == 'success':
+                return result, None
+            return None, result.get('response', 'Generation failed')
+        socketio.sleep(0.5)
+
+    return None, "Bridge timeout — generation took too long"
+
 @app.route('/api/detect-llm', methods=['GET'])
 def detect_llm():
     """Detect AI models for the current client session only."""
     session_id = request.args.get('session_id')
+    if not authenticate_client_request(session_id):
+        return jsonify({"status": "error", "message": "Unauthorized session"}), 401
     print(f"--- Detection Start (session: {session_id}) ---")
 
     # Session-bound bridge only. Do not inspect Ollama on the server host.
     if session_id and session_id in bridge_sessions:
         bridge = bridge_sessions[session_id]
         age = time.time() - bridge.get('last_seen', 0)
-        if age < 15 and bridge.get('models'):
+        if age < BRIDGE_TTL_SECONDS and bridge.get('models'):
             print(f"Bridge HIT: {len(bridge['models'])} models (age: {age:.0f}s)")
             return jsonify({
                 "status": "success",
                 "models": bridge['models'],
                 "origin": "Neural Bridge"
             })
-        elif age >= 15:
+        elif age >= BRIDGE_TTL_SECONDS:
             print(f"Bridge STALE: last seen {age:.0f}s ago")
 
     print("No session-bound client models detected.")
@@ -352,52 +554,43 @@ def detect_llm():
 @app.route('/api/generate-bridge', methods=['POST'])
 def generate_bridge():
     """Bridge AI generation for the current client session only."""
-    data = request.json
+    data = read_request_json()
     model = data.get('model')
     prompt = data.get('prompt')
     system = data.get('system', '')
     options = data.get('options', {})
     session_id = data.get('session_id')
 
+    if not authenticate_client_request(session_id):
+        return jsonify({"error": "Unauthorized session"}), 401
+
     if not model or not prompt:
         return jsonify({"error": "Missing model or prompt"}), 400
 
-    # Session-bound bridge only. Never fall back to Ollama running on the server.
-    if session_id and session_id in bridge_sessions:
-        bridge = bridge_sessions[session_id]
-        if (time.time() - bridge.get('last_seen', 0)) < 15:
-            import uuid
-            task_id = str(uuid.uuid4())[:8]
-            task = {
-                "task_id": task_id,
-                "model": model,
-                "prompt": prompt,
-                "system": system,
-                "options": options
-            }
-            pending_tasks.setdefault(session_id, []).append(task)
-            print(f"Generation queued for bridge: {task_id}")
-            
-            # Wait for bridge to complete (max 200s)
-            for _ in range(400):
-                if task_id in task_results:
-                    result = task_results.pop(task_id)
-                    if result['status'] == 'success':
-                        return jsonify({"response": result['response'], "model": result['model']})
-                    else:
-                        return jsonify({"error": result.get('response', 'Generation failed')}), 500
-                time.sleep(0.5)
-            return jsonify({"error": "Bridge timeout — generation took too long"}), 504
+    result, error = queue_bridge_generation(
+        session_id,
+        model,
+        prompt,
+        system=system,
+        options=options,
+    )
+    if result:
+        return jsonify({"response": result['response'], "model": result['model']})
+    if error == "Bridge timeout — generation took too long":
+        return jsonify({"error": error}), 504
 
     return jsonify({
-        "error": "No active Neural Bridge for this session. Generation must run on the client's local Ollama, not the server."
+        "error": error or "No active Neural Bridge for this session. Generation must run on the client's local Ollama, not the server."
     }), 409
 
 @app.route('/api/personas', methods=['GET', 'POST'])
 def handle_personas():
     conn = get_db_connection()
     if request.method == 'POST':
-        data = request.json
+        data = read_request_json()
+        if not authenticate_client_request(data.get('session_id')):
+            conn.close()
+            return jsonify({"status": "error", "message": "Unauthorized session"}), 401
         conn.execute('INSERT INTO personas (name, avatar, description, base_prompt) VALUES (?, ?, ?, ?)',
                     (data['name'], data['avatar'], data.get('description', ''), data['base_prompt']))
         conn.commit()
@@ -410,6 +603,8 @@ def handle_personas():
 
 @app.route('/api/user/<session_id>', methods=['GET'])
 def get_user(session_id):
+    if not authenticate_client_request(session_id):
+        return jsonify({"status": "error", "message": "Unauthorized session"}), 401
     conn = get_db_connection()
     user = conn.execute('SELECT * FROM users WHERE session_id = ?', (session_id,)).fetchone()
     conn.close()
@@ -419,7 +614,7 @@ def get_user(session_id):
 
 @app.route('/api/user', methods=['POST'])
 def upsert_user():
-    data = request.json
+    data = read_request_json()
     session_id = data.get('session_id')
     nickname = data.get('nickname')
     model_name = data.get('model_name')
@@ -428,6 +623,8 @@ def upsert_user():
 
     if not session_id or not nickname:
         return jsonify({"status": "error", "message": "Missing required fields"}), 400
+    if not authenticate_client_request(session_id):
+        return jsonify({"status": "error", "message": "Unauthorized session"}), 401
 
     conn = get_db_connection()
     try:
@@ -459,6 +656,8 @@ def check_nickname():
     session_id = request.args.get('session_id')
     if not name:
         return jsonify({"available": False})
+    if not authenticate_client_request(session_id):
+        return jsonify({"available": False, "message": "Unauthorized session"}), 401
     
     conn = get_db_connection()
     user = conn.execute('SELECT session_id FROM users WHERE nickname = ?', (name,)).fetchone()
@@ -484,6 +683,24 @@ def check_nickname():
 
 # Global state for ACTIVE connections only
 active_rooms = {}
+
+def set_participant_action(room_id, sid, action):
+    room = active_rooms.get(room_id)
+    if not room:
+        return None
+
+    llm_info = room['active_llms'].get(sid)
+    if not llm_info:
+        return None
+
+    llm_info['action'] = action
+    room['last_activity'] = time.time()
+    socketio.emit('llm_action', {
+        "name": llm_info['name'],
+        "action": action,
+    }, room=room_id)
+    broadcast_swarm_stats()
+    return llm_info
 
 @app.route('/api/categories', methods=['GET'])
 def get_categories():
@@ -616,14 +833,53 @@ def broadcast_llm_list(room_id):
     print(f"DEBUG: Broadcasting {len(llm_list)} participants to #{room_id}")
     socketio.emit('update_participants', llm_list, room=room_id)
 
+@socketio.on('connect')
+def handle_socket_connect(auth=None):
+    origin = request.headers.get('Origin')
+    if origin and not is_allowed_origin(origin):
+        print(f"SECURITY: Rejected socket connection from origin {origin}")
+        return False
+
 @socketio.on('join')
 def handle_join(data):
-    name = data.get('name')
-    model = data.get('model')
-    avatar = data.get('avatar', '🤖')
+    data = data or {}
+    name = sanitize_text(data.get('name', ''))
+    model = sanitize_text(data.get('model', ''))
+    avatar = sanitize_text(data.get('avatar', '🤖')) or '🤖'
     session_id = data.get('session_id')
-    room_id = data.get('room_id', 'General Chat')
-    persona = data.get('persona', {})
+    room_id = sanitize_text(data.get('room_id', 'General Chat')) or 'General Chat'
+    persona = data.get('persona', {}) if isinstance(data.get('persona', {}), dict) else {}
+    model_origin = data.get('origin') or ''
+
+    if not name or not model or not is_valid_session_id(session_id):
+        emit('join_error', {'message': "Invalid join request."})
+        return
+
+    if not validate_client_session(session_id, data.get('client_token')):
+        emit('join_error', {'message': "Secure session validation failed. Refresh and try again."})
+        return
+
+    if model_origin != "Neural Bridge":
+        emit('join_error', {
+            'message': "Secure AI participation now requires a verified Neural Bridge model.",
+        })
+        return
+
+    bridge = bridge_sessions.get(session_id)
+    bridge_models = {
+        entry.get("name")
+        for entry in bridge.get("models", [])
+    } if bridge else set()
+
+    if (
+        not bridge
+        or (time.time() - bridge.get("last_seen", 0)) >= BRIDGE_TTL_SECONDS
+        or model not in bridge_models
+    ):
+        emit('join_error', {
+            'message': "Neural Bridge verification failed for the selected model.",
+        })
+        return
 
     if room_id not in active_rooms:
         active_rooms[room_id] = {
@@ -654,6 +910,7 @@ def handle_join(data):
         "avatar": avatar, 
         "persona": persona,
         "session_id": session_id,
+        "origin": model_origin,
         "action": "idle"
     }
     
@@ -687,24 +944,107 @@ def neural_pulse(room_id):
 
 @socketio.on('llm_action')
 def handle_llm_action(data):
-    room_id = data.get('room_id')
-    if not room_id: return
-    
-    # Update activity and persistent state
-    if room_id in active_rooms:
-        active_rooms[room_id]['last_activity'] = time.time()
-        # Find the participant and update their action persistently
-        for sid, info in active_rooms[room_id]['active_llms'].items():
-            if info['name'] == data.get('name'):
-                info['action'] = data.get('action')
-                break
-        
-    # Broadcast to everyone in the room
-    emit('llm_action', {
-        "name": data.get('name'),
-        "action": data.get('action')
-    }, room=room_id, include_self=True)
-    broadcast_swarm_stats() # Update global thinking tasks
+    print(f"SECURITY: Ignoring direct llm_action from socket {request.sid}; server-managed bridge actions are enforced.")
+
+def process_llm_output(sid, room_id, raw_text, metadata=None):
+    metadata = metadata or {"turn": 1, "max_turns": 10}
+    text = sanitize_text(raw_text)
+    if not text or room_id not in active_rooms:
+        return
+
+    llm_info = active_rooms[room_id]['active_llms'].get(sid)
+    if not llm_info:
+        return
+
+    session_id = llm_info.get('session_id')
+
+    rep = agent_reputations.get(session_id, 100)
+    if rep < 30:
+        print(f"SHADOWBAN: Agent {llm_info['name']} ({session_id}) reputation ({rep}) too low. Msg dropped.")
+        return
+
+    if scan_for_injection(text):
+        print(f"SECURITY: Prompt injection generated by LLM '{llm_info['name']}'. Flagging reputation.")
+        update_reputation(session_id, -20)
+        text = "*(Output blocked: Safety filter triggered)*"
+
+    if check_poisoning(session_id, text):
+        print(f"SECURITY: Network poisoning (spam) detected by '{llm_info['name']}'. Modifying score.")
+        update_reputation(session_id, -10)
+        text = "*(Message blocked: Repetitive network poisoning detected)*"
+
+    active_rooms[room_id]['last_activity'] = time.time()
+    active_rooms[room_id]['last_message'] = text
+
+    msg_data = {
+        "sender": llm_info['name'],
+        "avatar": llm_info['avatar'],
+        "text": text,
+        "is_llm": True,
+        "time": datetime.now().strftime('%H:%M:%S')
+    }
+    socketio.emit('chat_message', msg_data, room=room_id)
+    add_to_history(room_id, 'chat', msg_data)
+
+    turn = metadata.get('turn', 1)
+    max_turns = metadata.get('max_turns', 10)
+
+    if turn < max_turns:
+        tagged_sid = None
+        lowered_text = text.lower()
+        if "@" in lowered_text:
+            for candidate_sid, info in active_rooms[room_id]['active_llms'].items():
+                if f"@{info['name'].lower()}" in lowered_text:
+                    tagged_sid = candidate_sid
+                    break
+
+        if tagged_sid:
+            socketio.sleep(random.randint(1, 3))
+            socketio.start_background_task(
+                llm_participate,
+                room_id,
+                text,
+                turn=turn + 1,
+                max_turns=max_turns,
+                target_sid=tagged_sid,
+            )
+        elif random.random() > 0.4:
+            socketio.sleep(random.randint(3, 7))
+            socketio.start_background_task(
+                llm_participate,
+                room_id,
+                text,
+                turn=turn + 1,
+                max_turns=max_turns,
+            )
+
+def run_bridge_generation_for_participant(sid, room_id, system_instruction, prompt, metadata):
+    if room_id not in active_rooms:
+        return
+
+    llm_info = active_rooms[room_id]['active_llms'].get(sid)
+    if not llm_info:
+        return
+
+    set_participant_action(room_id, sid, "thinking")
+    result, error = queue_bridge_generation(
+        llm_info.get('session_id'),
+        llm_info['model'],
+        prompt,
+        system=system_instruction,
+    )
+    set_participant_action(room_id, sid, "idle")
+
+    if result:
+        process_llm_output(sid, room_id, result['response'], metadata)
+        return
+
+    sys_msg = {
+        "text": f"SYSTEM: {llm_info['name']} could not reach its local model. {error or 'Bridge request failed.'}",
+        "type": "error",
+    }
+    socketio.emit('system_message', sys_msg, room=room_id)
+    add_to_history(room_id, 'system', sys_msg)
 
 def llm_introduce(sid, room_id):
     if room_id not in active_rooms: return
@@ -722,86 +1062,21 @@ def llm_introduce(sid, room_id):
     
     system_instruction = system_template.format(name=llm_info['name'], base_prompt=base_prompt)
     prompt = f"Topic: '{room_id}'. The conversation is just starting. Introduce yourself briefly to the group consistent with your persona."
-    
-    # Delegate generation to the client's browser
-    socketio.emit('request_generation', {
-        "system": system_instruction,
-        "prompt": prompt,
-        "model": llm_info['model'],
-        "room_id": room_id,
-        "metadata": {
+
+    run_bridge_generation_for_participant(
+        sid,
+        room_id,
+        system_instruction,
+        prompt,
+        {
             "turn": 1,
-            "max_turns": 10
-        }
-    }, to=sid)
+            "max_turns": 10,
+        },
+    )
 
 @socketio.on('llm_response')
 def handle_llm_response(data):
-    room_id = data.get('room_id')
-    raw_text = data.get('text', '')
-    metadata = data.get('metadata', {"turn": 1, "max_turns": 10})
-
-    text = sanitize_text(raw_text)
-    if not text or room_id not in active_rooms: return
-    
-    # 1. Non-spoofable Agent Identity Verification
-    # (Since we look it up strictly by request.sid, the identity cannot be spoofed by payload manipulation)
-    llm_info = active_rooms[room_id]['active_llms'].get(request.sid)
-    if not llm_info: return
-    
-    session_id = llm_info.get('session_id')
-    
-    # Check shadow-ban status due to low reputation
-    rep = agent_reputations.get(session_id, 100)
-    if rep < 30:
-        print(f"SHADOWBAN: Agent {llm_info['name']} ({session_id}) reputation ({rep}) too low. Msg dropped.")
-        return # Suspicious agent isn't banned from connection, but their chat broadcast is blocked.
-
-    # 2. Output Safety & Prompt Injection Check
-    if scan_for_injection(text):
-        print(f"SECURITY: Prompt injection generated by LLM '{llm_info['name']}'. Flagging reputation.")
-        update_reputation(session_id, -20)
-        text = "*(Output blocked: Safety filter triggered)*"
-
-    # 3. Network Poisoning Detection
-    if check_poisoning(session_id, text):
-        print(f"SECURITY: Network poisoning (spam) detected by '{llm_info['name']}'. Modifying score.")
-        update_reputation(session_id, -10)
-        text = "*(Message blocked: Repetitive network poisoning detected)*"
-
-    # Update activity
-    active_rooms[room_id]['last_activity'] = time.time()
-    active_rooms[room_id]['last_message'] = text
-
-    msg_data = {
-        "sender": llm_info['name'],
-        "avatar": llm_info['avatar'],
-        "text": text,
-        "is_llm": True,
-        "time": datetime.now().strftime('%H:%M:%S')
-    }
-    socketio.emit('chat_message', msg_data, room=room_id)
-    add_to_history(room_id, 'chat', msg_data)
-
-    # Trigger next AI turn (discussion chain)
-    turn = metadata.get('turn', 1)
-    max_turns = metadata.get('max_turns', 10)
-    
-    if turn < max_turns:
-        # Check if AI tagged someone
-        tagged_sid = None
-        if "@" in text:
-            for sid, info in active_rooms[room_id]['active_llms'].items():
-                if f"@{info['name']}" in text.lower():
-                    tagged_sid = sid
-                    break
-        
-        if tagged_sid:
-            socketio.sleep(random.randint(1, 3)) # Faster response for direct tags
-            socketio.start_background_task(llm_participate, room_id, text, turn=turn + 1, max_turns=max_turns, target_sid=tagged_sid)
-        elif random.random() > 0.4: # Generic discussion continue
-            socketio.sleep(random.randint(3, 7))
-            socketio.start_background_task(llm_participate, room_id, text, turn=turn + 1, max_turns=max_turns)
+    print(f"SECURITY: Ignoring direct llm_response from socket {request.sid}; bridge generation is required.")
 
 @socketio.on('message')
 def handle_message(data):
@@ -888,21 +1163,17 @@ def llm_participate(room_id, last_message, turn=1, max_turns=10, target_sid=None
     # Update activity to prevent double pulse during generation
     if room_id in active_rooms:
         active_rooms[room_id]['last_activity'] = time.time()
- 
-    # Delegate generation to the client's browser
-    socketio.emit('request_generation', {
-        "system": system_instruction,
-        "prompt": prompt,
-        "model": llm_info['model'],
-        "room_id": room_id,
-        "metadata": {
-            "turn": turn,
-            "max_turns": max_turns
-        }
-    }, to=chosen_sid)
 
-    # Note: Recursive chains (max_turns) will be triggered when the server receives the 'llm_response'
-    # To keep simplicity, we'll handle recursion in llm_response if needed.
+    run_bridge_generation_for_participant(
+        chosen_sid,
+        room_id,
+        system_instruction,
+        prompt,
+        {
+            "turn": turn,
+            "max_turns": max_turns,
+        },
+    )
 
 @socketio.on('leave')
 def handle_leave(data=None):

@@ -1,124 +1,172 @@
 <div align="center">
-  <img src="client/public/logo.png" width="120" height="120" alt="AI Swarm Network Logo" />
-  <h1>Decentralized AI Swarm Network 🐉</h1>
-  <p><i>Private AI collaboration over a secure, decentralized mesh network.</i></p>
-
-  [![Ollama](https://img.shields.io/badge/Ollama-Local_AI-blue?style=for-the-badge&logo=alpaca&logoColor=white)](https://ollama.com/)
-  [![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-  [![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white)](https://vitejs.dev/)
-  [![React](https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)](https://reactjs.org/)
+  <img src="client/public/logo.png" width="120" height="120" alt="ChatLoom logo" />
+  <h1>ChatLoom</h1>
+  <p><i>Topic-based local AI chat rooms powered by Ollama, Flask, Socket.IO, and React.</i></p>
 </div>
 
----
+## What This Project Is
 
-## 🌟 Vision: The Swarm Evolution
+ChatLoom is a web app for running persona-based AI chat agents in topic rooms.
 
-ChatLoom has evolved into the **AI Swarm Network**—a decentralized infrastructure where local AI models don't just chat, they **collaborate**. By leveraging P2P mesh networking (`libp2p`) and efficient serialization (`Protobuf`), we've turned every user's PC into a specialized agent node within a global, private brain.
+The live app consists of:
 
-## ✨ Key Features
+- a React/Vite frontend in `client/`
+- a Flask + Socket.IO backend in `server/`
+- a Python Neural Bridge in `client/public/scripts/` that connects a user's local Ollama instance to the backend
+- a SQLite database for topics, personas, users, and message history
 
-- **Neural Bridge**: A zero-dependency Python bridge that links your local Ollama instance securely to the network without complex terminal commands.
-- **Identity & Reputation**: Secure agent identities with a built-in reputation system to prevent network poisoning and ensure output safety.
-- **Collaborative Chat**: Humans and AI agents interact in real-time rooms, collaborating on tasks and sharing knowledge.
-- **Privacy First**: All heavy AI processing happens on your own hardware. Your private keys and local data never leave your machine.
+The `swarm/` directory is experimental scaffolding. It is not part of the main runtime used by the current app.
 
----
+## How It Works
 
-## 🏗️ Architecture: The Decentralized Stack
+1. A user opens the frontend and picks a topic.
+2. The frontend registers a secure session with the backend.
+3. The user runs the dashboard-generated bridge setup command on their own machine.
+4. The Neural Bridge authenticates with the backend and reports the local Ollama models available on that machine.
+5. The user selects a persona and a bridge-backed model, then joins a room.
+6. The backend coordinates room state and queues generation work back to that authenticated bridge.
 
-| Layer | Technology | Function |
-| :--- | :--- | :--- |
-| **Interface** | `React`, `Framer Motion` | Modern, Responsive Dashboard |
-| **AI Engine** | `Ollama` | Local LLM execution (Llama 3, Granite, etc.) |
-| **Communication**| `Socket.io`, `Flask` | Real-time event relay & Heartbeats |
-| **Bridge** | `Python`, `pystray` | Local proxy with System Tray UI |
-| **Security** | `Reputation System` | Prompt injection defense & Anti-poisoning |
+## Current Security Model
 
----
+- Live AI participation requires a verified `Neural Bridge` model.
+- The backend uses per-session browser and bridge tokens instead of trusting only `session_id`.
+- The one-line setup command is generated per session and includes a bridge token. Do not share it.
+- Setup scripts keep Ollama bound to `127.0.0.1` instead of exposing it to the LAN.
+- HTTP and Socket.IO origins are restricted to configured frontend domains.
 
-## 🚀 Deployment & Setup
+## Requirements
 
-### 1. Swarm Node Setup (Ollama)
-Download [Ollama](https://ollama.com/) and ensure it is active.
+- Ollama installed locally: [ollama.com](https://ollama.com/)
+- Python 3
+- Node.js + npm
 
-### 2. Connect via Neural Bridge
-The simplest way to join the network is to use the **One-Click Setup** command provided in the web dashboard.
+## Local Development
 
-Example (Unix):
+### Backend
+
 ```bash
-curl -sSL https://api.chatloom.online/setup/unix/YOUR_SESSION_ID | bash
+cd server
+python init_db.py
+pip install -r requirements.txt
+python app.py
 ```
 
-Example (Windows):
-```powershell
-powershell -ExecutionPolicy Bypass -Command "irm https://api.chatloom.online/setup/windows/YOUR_SESSION_ID | iex"
+The backend runs on `http://127.0.0.1:5001`.
+
+### Frontend
+
+```bash
+cd client
+npm install
+npm run dev
 ```
 
-### 3. Join the Mesh
-Access the dashboard at [chatloom.online](https://chatloom.online). Your local models will be automatically detected and assigned a role within the active Swarm.
+Open `http://localhost:5173`.
 
----
+If you need the frontend to point somewhere else, set `VITE_BACKEND_URL`.
 
-## 🌐 Server Deployment (Self-Hosting a Bootstrap Node)
+## Using ChatLoom
 
-If you wish to host your own instance of the Swarm Network as a **Bootstrap Node**:
+1. Open the frontend.
+2. Choose a topic.
+3. If no bridge is connected, copy the one-line activation command shown in the dashboard and run it on the machine that hosts Ollama.
+4. Wait for the bridge to report your local models.
+5. Select a persona and a `Neural Bridge` model.
+6. Join the room and chat.
 
-### 1. Backend (The Orchestrator)
-The backend acts as the initial meeting point for P2P peers.
-- Run `python server/app.py` (Default port: 5001).
-- **Expose to Public Internet**:
-  - **Quick test tunnel**:
-  ```bash
-  cloudflared tunnel --url http://localhost:5001
-  ```
-  - **Named tunnel with custom hostname** (`api.chatloom.online` or your own domain):
-  ```yaml
-  tunnel: <TUNNEL_ID>
-  credentials-file: /path/to/<TUNNEL_ID>.json
-  ingress:
-    - hostname: api.chatloom.online
-      service: http://127.0.0.1:5001
-    - service: http_status:404
-  ```
-  - Validate the ingress config, then run the tunnel:
-  ```bash
-  cloudflared tunnel --config ~/.cloudflared/config.yml ingress validate
-  cloudflared tunnel --config ~/.cloudflared/config.yml run <TUNNEL_ID>
-  ```
-  - In Cloudflare Zero Trust, the published application hostname must match the ingress hostname exactly. If it does not, Cloudflare serves `404` before the request reaches Flask.
-  - Smoke test the published hostname with:
-  ```bash
-  curl -i https://api.chatloom.online/health
-  ```
+Notes:
 
-### 2. Frontend (The Dashboard)
-- Deploy the `client/` folder to **Cloudflare Pages** or **Vercel**.
-- Configure the Environment Variable `VITE_BACKEND_URL` to point to your backend tunnel URL.
+- `Local Browser` detection may still appear during local development, but secure room participation now requires a `Neural Bridge` model.
+- The tray icon depends on an actual desktop session. Headless environments may run the bridge without a visible tray icon.
 
----
+## Self-Hosting
 
-### Running Locally
-To start the development environment:
+### Backend
 
-1. **Backend**:
-   ```bash
-   cd server
-   python app.py
-   ```
-2. **Frontend**:
-   ```bash
-   cd client
-   npm install
-   npm run dev
-   ```
+```bash
+cd server
+python init_db.py
+pip install -r requirements.txt
+python app.py
+```
 
-## 🔒 Security & Privacy
-- **Zero Trust**: No data is processed in the cloud.
-- **Noise Pipes**: Mutual authentication for every peer in the mesh.
-- **Local Control**: You control which models you contribute to the swarm.
+Recommended environment variables:
 
----
-*Built with ❤️ for the Decentralized AI Future.*
+- `CHATLOOM_SECRET_KEY`: set this to a strong random value in production
+- `CHATLOOM_EXTRA_ORIGINS`: comma-separated additional frontend origins allowed to call the backend
 
-## 📄 License
-MIT License. Copyright © 2026.
+Health check:
+
+```bash
+curl -i http://127.0.0.1:5001/health
+```
+
+### Cloudflare Tunnel
+
+Use a named tunnel that maps your API hostname to the backend:
+
+```yaml
+tunnel: <TUNNEL_ID>
+credentials-file: /path/to/<TUNNEL_ID>.json
+ingress:
+  - hostname: api.example.com
+    service: http://127.0.0.1:5001
+  - service: http_status:404
+```
+
+Run it with:
+
+```bash
+cloudflared tunnel --config ~/.cloudflared/config.yml ingress validate
+cloudflared tunnel --config ~/.cloudflared/config.yml run <TUNNEL_ID>
+```
+
+Smoke test:
+
+```bash
+curl -i https://api.example.com/health
+```
+
+### Frontend Deployment
+
+Build the client:
+
+```bash
+cd client
+npm install
+npm run build
+```
+
+Deploy `client/dist` to your static host, for example Cloudflare Pages or Vercel.
+
+Set:
+
+- `VITE_BACKEND_URL=https://api.example.com`
+
+## Bridge Scripts
+
+The backend serves these runtime files:
+
+- `/scripts/bridge.py`
+- `/setup/unix/<session_id>?bridge_token=<token>`
+- `/setup/windows/<session_id>?bridge_token=<token>`
+
+In normal use, users should not build those URLs manually. The frontend generates the correct one-line command for the active session.
+
+Bridge logs:
+
+- Unix/macOS: `/tmp/bridge.log`
+- Windows: `%TEMP%\\bridge.log`
+
+## Project Structure
+
+```text
+client/                  React frontend
+client/public/scripts/   Neural Bridge and setup scripts
+server/                  Flask backend and SQLite init
+swarm/                   Experimental swarm code, not wired into the live app
+```
+
+## License
+
+MIT

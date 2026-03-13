@@ -50,13 +50,17 @@ import {
   RefreshCcw,
   RefreshCw,
   Check,
+  Facebook,
+  Github,
   Sun,
   Moon,
   Monitor,
   X,
   Copy,
   Settings,
+  AtSign,
   Wrench,
+  Youtube,
 } from "lucide-react";
 
 // Use public/logo.png for the header image
@@ -73,13 +77,96 @@ const getBackendUrl = () => {
 const BACKEND_URL = getBackendUrl();
 const isSecure = BACKEND_URL.startsWith("https");
 const BRIDGE_ORIGIN = "Neural Bridge";
+const SESSION_ID_KEY = "chat_session_id";
+const CLIENT_TOKEN_KEY = "chat_client_token";
+const BRIDGE_TOKEN_KEY = "chat_bridge_token";
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{12,128}$/;
+const SECURE_TOKEN_PATTERN = /^[a-f0-9]{32,128}$/i;
+
+const readStoredJson = (key, fallback = null) => {
+  if (typeof window === "undefined") return fallback;
+
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const readStoredValue = (key, fallback = "") => {
+  if (typeof window === "undefined") return fallback;
+  return localStorage.getItem(key) || fallback;
+};
+
+const generateSecureToken = (byteLength = 16) => {
+  const bytes = new Uint8Array(byteLength);
+  const cryptoApi = globalThis.crypto;
+
+  if (cryptoApi?.getRandomValues) {
+    cryptoApi.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+};
+
+const ensureStoredToken = (key, byteLength = 16) => {
+  const currentValue = readStoredValue(key, "");
+  if (SECURE_TOKEN_PATTERN.test(currentValue)) {
+    return currentValue;
+  }
+
+  const nextValue = generateSecureToken(byteLength);
+  localStorage.setItem(key, nextValue);
+  return nextValue;
+};
+
+const ensureStoredSessionId = () => {
+  const currentValue = readStoredValue(SESSION_ID_KEY, "");
+  if (SESSION_ID_PATTERN.test(currentValue)) {
+    return currentValue;
+  }
+
+  const nextValue = generateSecureToken(16);
+  localStorage.setItem(SESSION_ID_KEY, nextValue);
+  return nextValue;
+};
+
+const modelsMatch = (left, right) =>
+  Boolean(
+    left &&
+      right &&
+      left.name === right.name &&
+      left.origin === right.origin,
+  );
+
+const findMatchingModel = (availableModels, targetModel) => {
+  if (!targetModel) return null;
+  return (
+    availableModels.find((model) => modelsMatch(model, targetModel)) || null
+  );
+};
+
+const resolvePreferredModel = (availableModels, ...candidates) => {
+  for (const candidate of candidates) {
+    const match = findMatchingModel(availableModels, candidate);
+    if (match) return match;
+  }
+
+  return availableModels[0] || null;
+};
 
 const socket = io(BACKEND_URL, { 
   path: "/socket.io",
   transports: ['websocket', 'polling'], // Fallback to polling if websocket fails
   secure: isSecure,
-  rejectUnauthorized: false, // Useful for self-signed certs in some tunnel setups
-  reconnection: true
+  reconnection: true,
+  autoConnect: false,
+  withCredentials: true,
 });
 
 const AVATARS = ["🤖", "👾", "🚀", "🧠", "⚡", "🌈", "🐲", "🐱‍👤"];
@@ -330,6 +417,34 @@ const TOPIC_ICON_RULES = [
   },
 ];
 
+const SOCIAL_LINKS = [
+  {
+    label: "Facebook",
+    href: "https://www.facebook.com/burmesestack",
+    Icon: Facebook,
+  },
+  {
+    label: "GitHub",
+    href: "https://www.github.com/burmeseitman",
+    Icon: Github,
+  },
+  {
+    label: "YouTube",
+    href: "https://www.youtube.com/burmeseitman",
+    Icon: Youtube,
+  },
+  {
+    label: "Threads",
+    href: "https://www.threads.com/@burmesestack",
+    Icon: AtSign,
+  },
+  {
+    label: "Substack",
+    href: "https://www.burmesestack.substack.com",
+    Icon: Book,
+  },
+];
+
 const normalizeTopicText = (value = "") =>
   value.toLowerCase().replace(/&/g, " and ").replace(/[^\w\s]/g, " ");
 
@@ -413,10 +528,10 @@ function App() {
     () => localStorage.getItem("chat_room") || null,
   );
   const [models, setModels] = useState(
-    () => JSON.parse(localStorage.getItem("chat_models")) || [],
+    () => readStoredJson("chat_models", []),
   );
   const [selectedModel, setSelectedModel] = useState(
-    () => JSON.parse(localStorage.getItem("chat_model")) || null,
+    () => readStoredJson("chat_model", null),
   );
   const [name, setName] = useState(
     () => localStorage.getItem("chat_name") || "",
@@ -486,6 +601,18 @@ function App() {
   }, [selectedPersona]);
 
   useEffect(() => {
+    if (models.length === 0) return;
+
+    setSelectedModel((current) =>
+      resolvePreferredModel(
+        models,
+        current,
+        readStoredJson("chat_model", null),
+      ),
+    );
+  }, [models]);
+
+  useEffect(() => {
     localStorage.setItem("chat_active_only", String(activeOnly));
   }, [activeOnly]);
   const [newPersona, setNewPersona] = useState({
@@ -497,16 +624,76 @@ function App() {
   const [joinError, setJoinError] = useState("");
   const [isTopicsLoading, setIsTopicsLoading] = useState(false);
   const [sessionId] = useState(() => {
-    let id = localStorage.getItem("chat_session_id");
-    if (!id) {
-      id = Math.random().toString(36).substring(2, 15);
-      localStorage.setItem("chat_session_id", id);
-    }
-    return id;
+    return ensureStoredSessionId();
   });
+  const [clientToken] = useState(() => ensureStoredToken(CLIENT_TOKEN_KEY, 24));
+  const [bridgeToken] = useState(() => ensureStoredToken(BRIDGE_TOKEN_KEY, 24));
+  const [authReady, setAuthReady] = useState(false);
+
+  const withClientAuth = (config = {}) => ({
+    ...config,
+    headers: {
+      ...(config.headers || {}),
+      "X-Chatloom-Client-Token": clientToken,
+    },
+  });
+
+  const resetSecureSession = () => {
+    localStorage.setItem(SESSION_ID_KEY, generateSecureToken(16));
+    localStorage.setItem(CLIENT_TOKEN_KEY, generateSecureToken(24));
+    localStorage.setItem(BRIDGE_TOKEN_KEY, generateSecureToken(24));
+    localStorage.removeItem("chat_step");
+    window.location.reload();
+  };
+
+  useEffect(() => {
+    let isActive = true;
+
+    const registerSecureSession = async () => {
+      try {
+        await axios.post(
+          `${BACKEND_URL}/api/session/register`,
+          {
+            session_id: sessionId,
+            client_token: clientToken,
+            bridge_token: bridgeToken,
+          },
+          { timeout: 8000 },
+        );
+        if (isActive) {
+          setAuthReady(true);
+        }
+      } catch (error) {
+        if (error.response?.status === 409) {
+          resetSecureSession();
+          return;
+        }
+
+        if (isActive) {
+          setAuthReady(false);
+        }
+      }
+    };
+
+    registerSecureSession();
+    const interval = setInterval(registerSecureSession, 30000);
+
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
+  }, [sessionId, clientToken, bridgeToken]);
+
+  useEffect(() => {
+    if (!authReady && socket.connected) {
+      socket.disconnect();
+    }
+  }, [authReady]);
 
   // Bridge Status Polling — check if user's bridge.py is active
   useEffect(() => {
+    if (!authReady) return undefined;
+
     const interval = setInterval(async () => {
       // Don't poll if we are actively running the manual detection loop in handleTopicClick
       if (isDetectingRef.current) return;
@@ -514,6 +701,7 @@ function App() {
       try {
         const res = await axios.get(
           `${BACKEND_URL}/api/bridge/status/${sessionId}`,
+          withClientAuth(),
         );
         
         if (res.data.active && res.data.models?.length > 0) {
@@ -526,7 +714,13 @@ function App() {
           setModels(bridgedModels);
           setBridgeActive(true);
 
-          setSelectedModel((current) => current || bridgedModels[0] || null);
+          setSelectedModel((current) =>
+            resolvePreferredModel(
+              bridgedModels,
+              current,
+              readStoredJson("chat_model", null),
+            ),
+          );
 
           if (step === "detect") {
             setStep("setup");
@@ -546,7 +740,7 @@ function App() {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [step, sessionId]);
+  }, [authReady, step, sessionId, clientToken]);
 
   const [nicknameSuggestions, setNicknameSuggestions] = useState([]);
   const [isCheckingNickname, setIsCheckingNickname] = useState(false);
@@ -556,9 +750,14 @@ function App() {
 
   // Load persistent user profile
   useEffect(() => {
+    if (!authReady) return undefined;
+
     const fetchProfile = async () => {
       try {
-        const res = await axios.get(`${BACKEND_URL}/api/user/${sessionId}`);
+        const res = await axios.get(
+          `${BACKEND_URL}/api/user/${sessionId}`,
+          withClientAuth(),
+        );
         if (res.data) {
           setName(res.data.nickname);
           setHardwareMode(res.data.hardware_mode || "balanced");
@@ -574,7 +773,7 @@ function App() {
       }
     };
     fetchProfile();
-  }, [sessionId]);
+  }, [authReady, sessionId, clientToken]);
 
   const [theme, setTheme] = useState(() => localStorage.getItem("chat_theme") || "dark");
 
@@ -587,7 +786,7 @@ function App() {
 
   // Handle nickname availability check
   useEffect(() => {
-    if (!name || name.length < 2 || step !== "setup") {
+    if (!authReady || !name || name.length < 2 || step !== "setup") {
       setNicknameError("");
       setNicknameSuggestions([]);
       return;
@@ -598,6 +797,7 @@ function App() {
       try {
         const res = await axios.get(
           `${BACKEND_URL}/api/check-nickname?name=${encodeURIComponent(name)}&session_id=${sessionId}`,
+          withClientAuth(),
         );
         if (!res.data.available) {
           setNicknameError("This nickname is already in use.");
@@ -614,19 +814,31 @@ function App() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [name, step, sessionId]);
+  }, [authReady, name, step, sessionId, clientToken]);
 
   // Sync persona and model when they become available after profile load
   useEffect(() => {
+    if (!authReady) return undefined;
+
     const syncProfileDeps = async () => {
       try {
-        const res = await axios.get(`${BACKEND_URL}/api/user/${sessionId}`);
+        const res = await axios.get(
+          `${BACKEND_URL}/api/user/${sessionId}`,
+          withClientAuth(),
+        );
         if (res.data) {
           if (personas.length > 0 && res.data.persona_id) {
             const p = personas.find((p) => p.id === res.data.persona_id);
             if (p) setSelectedPersona(p);
           }
-          if (models.length > 0 && res.data.model_name) {
+
+          const currentModel = findMatchingModel(models, selectedModel);
+          const localModel = findMatchingModel(
+            models,
+            readStoredJson("chat_model", null),
+          );
+
+          if (!currentModel && !localModel && models.length > 0 && res.data.model_name) {
             const m = models.find((m) => m.name === res.data.model_name);
             if (m) setSelectedModel(m);
           }
@@ -636,7 +848,7 @@ function App() {
     if (personas.length > 0 || models.length > 0) {
       syncProfileDeps();
     }
-  }, [personas, models, sessionId]);
+  }, [authReady, personas, models, sessionId, clientToken, selectedModel]);
 
   // Consolidated Fetch Effect
   useEffect(() => {
@@ -764,7 +976,6 @@ function App() {
           setStep("setup");
           fetchPersonas();
         } else {
-          setStep("chat");
           // Small delay to ensure state is set before join
           setTimeout(() => handleJoin(), 100);
         }
@@ -807,7 +1018,6 @@ function App() {
       
       // Auto-join ONLY if we have both identity AND a valid model saved
       if (savedName && name && savedModel && models.length > 0) {
-        setStep("chat");
         handleJoin(); 
       } else {
         setStep(step);
@@ -863,12 +1073,16 @@ function App() {
       // STEP 2: Backend Bridge (bridge.py pushes data to backend)
       // ─────────────────────────────────────────────────────────────────
       if (!signal.aborted) {
+        if (!authReady) {
+          return fail("Secure session sync is still in progress. Try again in a moment.");
+        }
+
         try {
           console.log(`DEBUG: Falling back to session bridge...`);
           setStatus("Direct browser access blocked. Trying your Neural Bridge...");
           const bridgeRes = await axios.get(
             `${BACKEND_URL}/api/detect-llm?session_id=${sessionId}`,
-            { timeout: 12000, signal },
+            withClientAuth({ timeout: 12000, signal }),
           );
           console.log(`DEBUG: Bridge response:`, bridgeRes.data);
           if (
@@ -911,7 +1125,11 @@ function App() {
   const handleSavePersona = async () => {
     if (!newPersona.name || !newPersona.base_prompt) return;
     try {
-      await axios.post(`${BACKEND_URL}/api/personas`, newPersona);
+      await axios.post(
+        `${BACKEND_URL}/api/personas`,
+        { ...newPersona, session_id: sessionId },
+        withClientAuth(),
+      );
       fetchPersonas();
       setShowPersonaForm(false);
       setNewPersona({
@@ -926,6 +1144,8 @@ function App() {
   };
 
   useEffect(() => {
+    if (!authReady) return undefined;
+
     socket.on("connect", () => {
       console.log("DEBUG: Socket connected", socket.id);
       setStatus("Connected. Ready.");
@@ -940,7 +1160,9 @@ function App() {
         socket.emit("join", {
           name: savedName,
           model: savedModel.name,
+          origin: savedModel.origin || BRIDGE_ORIGIN,
           avatar: savedPersona.avatar,
+          client_token: clientToken,
           session_id: sessionId,
           room_id: savedRoom,
           persona: savedPersona
@@ -1064,7 +1286,7 @@ function App() {
           res = await axios.post(
             `${BACKEND_URL}/api/generate-bridge`,
             { ...generateData, session_id: sessionId },
-            { timeout: profile.timeout + 30000 },
+            withClientAuth({ timeout: profile.timeout + 30000 }),
           );
         }
 
@@ -1101,6 +1323,10 @@ function App() {
       processQueue();
     });
 
+    if (!socket.connected) {
+      socket.connect();
+    }
+
     return () => {
       socket.off("connect");
       socket.off("disconnect");
@@ -1109,9 +1335,11 @@ function App() {
       socket.off("chat_history");
       socket.off("update_participants");
       socket.off("llm_action");
+      socket.off("swarm_stats");
+      socket.off("join_error");
       socket.off("request_generation");
     };
-  }, [sessionId]);
+  }, [authReady, sessionId, clientToken]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1119,6 +1347,14 @@ function App() {
 
   const handleJoin = () => {
     if (!name || !selectedModel || !selectedTopic || !selectedPersona) return;
+    if (!authReady) {
+      setJoinError("Secure session is still syncing. Try again in a moment.");
+      return;
+    }
+    if (selectedModel.origin !== BRIDGE_ORIGIN) {
+      setJoinError("Secure multi-user AI chat now requires a Neural Bridge model.");
+      return;
+    }
 
     localStorage.setItem("chat_name", name);
     localStorage.setItem("chat_avatar", selectedPersona.avatar);
@@ -1127,13 +1363,17 @@ function App() {
 
     // Persist to DB
     axios
-      .post(`${BACKEND_URL}/api/user`, {
-        session_id: sessionId,
-        nickname: name,
-        model_name: selectedModel.name,
-        hardware_mode: hardwareMode,
-        persona_id: selectedPersona.id,
-      })
+      .post(
+        `${BACKEND_URL}/api/user`,
+        {
+          session_id: sessionId,
+          nickname: name,
+          model_name: selectedModel.name,
+          hardware_mode: hardwareMode,
+          persona_id: selectedPersona.id,
+        },
+        withClientAuth(),
+      )
       .catch((err) => console.error("Failed to persist user config", err));
 
     setStep("chat");
@@ -1142,8 +1382,10 @@ function App() {
     socket.emit("join", {
       name,
       model: selectedModel.name,
+      origin: selectedModel.origin,
       avatar: selectedPersona.avatar,
       persona: selectedPersona,
+      client_token: clientToken,
       session_id: sessionId,
       room_id: selectedTopic,
     });
@@ -1164,8 +1406,18 @@ function App() {
 
   const apiBase = BACKEND_URL || window.location.origin;
   const isWindows = navigator.userAgent.toLowerCase().includes("win") || navigator.platform.toLowerCase().includes("win");
-  const swarmUnixCmd = `curl -sSL ${apiBase}/setup/unix/${sessionId} | bash`;
-  const swarmWinCmd = `powershell -ExecutionPolicy Bypass -Command "irm ${apiBase}/setup/windows/${sessionId} | iex"`;
+  const secureSetupUrl = authReady
+    ? `${apiBase}/setup/unix/${encodeURIComponent(sessionId)}?bridge_token=${encodeURIComponent(bridgeToken)}`
+    : "";
+  const secureSetupWinUrl = authReady
+    ? `${apiBase}/setup/windows/${encodeURIComponent(sessionId)}?bridge_token=${encodeURIComponent(bridgeToken)}`
+    : "";
+  const swarmUnixCmd = authReady
+    ? `curl -fsSL "${secureSetupUrl}" | bash`
+    : "Securing session...";
+  const swarmWinCmd = authReady
+    ? `powershell -ExecutionPolicy Bypass -Command "irm '${secureSetupWinUrl}' | iex"`
+    : "Securing session...";
 
   if (step === "topics") {
     const totalPages = Math.max(1, Math.ceil(totalTopics / 12));
@@ -1245,7 +1497,7 @@ function App() {
         </header>
 
         <SwarmMonitor 
-          swarmSize={swarmStats.total_nodes || 1} 
+          swarmSize={swarmStats.total_nodes ?? 0} 
           activeTasks={swarmStats.active_tasks || 0} 
           bridgeActive={bridgeActive}
           setupCommand={isWindows ? swarmWinCmd : swarmUnixCmd}
@@ -1263,7 +1515,7 @@ function App() {
                 </h2>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+              <div className="flex flex-col sm:flex-row items-stretch gap-3 w-full md:w-auto">
                 <button
                   type="button"
                   onClick={() => setActiveOnly((current) => !current)}
@@ -1302,7 +1554,7 @@ function App() {
                 </button>
 
                 {/* Search Box */}
-                <div className="relative group w-full md:w-80">
+                <div className="relative group w-full md:w-80 self-stretch">
                   <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
                     <Search
                       size={16}
@@ -1314,7 +1566,7 @@ function App() {
                     placeholder="Search topics..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-white/[0.03] border border-white/10 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:bg-white/[0.06] transition-all placeholder:text-gray-600"
+                    className="h-full min-h-[58px] w-full bg-white/[0.03] border border-white/10 rounded-2xl pl-10 pr-4 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500/50 focus:bg-white/[0.06] transition-all placeholder:text-gray-600"
                   />
                   {searchQuery.length > 0 && searchQuery.length < 2 && (
                     <div className="absolute -bottom-5 left-1 text-[8px] font-bold text-gray-500 uppercase tracking-widest animate-pulse">
@@ -1494,7 +1746,27 @@ function App() {
         </div>
 
         {/* Footer */}
-        <footer className="w-full py-8 border-t border-white/5 bg-black/20 flex flex-col items-center justify-center gap-2">
+        <footer className="w-full py-8 border-t border-white/5 bg-black/20 flex flex-col items-center justify-center gap-4 px-6">
+          <div className="flex flex-col items-center gap-3">
+            <span className="text-[10px] font-black uppercase tracking-[0.32em] text-gray-600">
+              Follow Burmese Stack
+            </span>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              {SOCIAL_LINKS.map(({ label, href, Icon }) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={label}
+                  title={label}
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-gray-300 transition-all hover:-translate-y-0.5 hover:border-cyan-400/40 hover:bg-cyan-400/10 hover:text-cyan-300"
+                >
+                  <Icon size={18} strokeWidth={2.1} />
+                </a>
+              ))}
+            </div>
+          </div>
           <p className="text-xs font-medium text-gray-500 tracking-wider">
             &copy; {new Date().getFullYear()} ChatLoom. All rights reserved.
           </p>
@@ -1767,8 +2039,8 @@ function App() {
                               : "bg-blue-500/10 text-blue-400 border-blue-500/20"
                           }`}
                         >
-                          {m.origin}
-                        </span>
+                        {m.origin}
+                      </span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] text-gray-500">
@@ -1776,13 +2048,18 @@ function App() {
                         </span>
                         {m.origin === "Local Browser" && (
                           <span className="text-[8px] text-gray-600 italic">
-                            No Setup Required
+                            Bridge required to join
                           </span>
                         )}
                       </div>
                     </button>
                   ))}
                 </div>
+                {selectedModel?.origin !== BRIDGE_ORIGIN && (
+                  <p className="mt-2 text-[9px] font-bold uppercase tracking-wider text-amber-400">
+                    Neural Bridge verification is required for live agent participation.
+                  </p>
+                )}
               </div>
 
               {/* Hardware Capacity Selection */}
@@ -1910,7 +2187,8 @@ function App() {
                 !!nicknameError ||
                 isCheckingNickname ||
                 !selectedModel ||
-                !selectedPersona
+                !selectedPersona ||
+                selectedModel?.origin !== BRIDGE_ORIGIN
               }
               className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl font-black text-lg hover:shadow-purple-500/20 active:scale-[0.98] transition-all shadow-lg disabled:opacity-20 flex items-center justify-center gap-3 uppercase tracking-tighter"
             >
