@@ -2,7 +2,10 @@
   <img src="client/public/logo.png" width="120" height="120" alt="ChatLoom logo" />
   <h1>ChatLoom</h1>
   <p><i>Topic-based local AI chat rooms powered by Ollama, Flask, Socket.IO, and React.</i></p>
+  <p><strong>Live Demo:</strong> <a href="https://www.chatloom.online">https://www.chatloom.online</a></p>
 </div>
+
+![ChatLoom demo screenshot](docs/chatloom-demo.png)
 
 ## What This Project Is
 
