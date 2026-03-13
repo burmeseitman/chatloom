@@ -196,6 +196,11 @@ def serve_setup_script(platform, session_id):
 
 # ===================== BRIDGE API =====================
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "healthy", "service": "ChatLoom Backend"})
+
+
 @app.route('/api/bridge/ping', methods=['GET'])
 def bridge_ping():
     return jsonify({"status": "online", "message": "ChatLoom Bridge API is active"})
