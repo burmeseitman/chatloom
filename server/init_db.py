@@ -9,6 +9,10 @@ def init_db():
     print(f"Initializing database at {DB_PATH}...")
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    conn.execute('PRAGMA journal_mode = WAL')
+    conn.execute('PRAGMA synchronous = NORMAL')
+    conn.execute('PRAGMA foreign_keys = ON')
+    conn.execute('PRAGMA busy_timeout = 5000')
 
     # Drop topics to refresh with categories
     cursor.execute('DROP TABLE IF EXISTS topics')
@@ -69,6 +73,9 @@ def init_db():
         FOREIGN KEY (persona_id) REFERENCES personas(id)
     )
     ''')
+
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_messages_room_id_id ON messages(room_id, id)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_topics_category_name ON topics(category, name)')
 
     # Insert default settings
     cursor.execute("SELECT COUNT(*) FROM settings")

@@ -500,15 +500,17 @@ const ChatMessage = React.memo(({ msg }) => {
       animate={{ opacity: 1 }}
       className="irc-message-line group"
     >
-      <span className="irc-timestamp">[{time}]</span>
-      <div className="flex-1 flex gap-2">
+      <div className="flex w-28 shrink-0 flex-col gap-1 leading-tight">
+        <span className="irc-timestamp">[{time}]</span>
         <span
-          className={`font-bold shrink-0 ${msg.is_llm ? "text-cyan-400" : "text-gray-400"}`}
+          className={`font-bold text-xs ${msg.is_llm ? "text-cyan-400" : "text-gray-400"}`}
         >
           {"<"}
           {msg.sender || "Unknown"}
           {">"}
         </span>
+      </div>
+      <div className="min-w-0 flex-1">
         <div className="text-gray-200 whitespace-pre-wrap">
           {typeof msg.text === "string" ? msg.text : JSON.stringify(msg.text)}
         </div>

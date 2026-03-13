@@ -198,6 +198,51 @@ socketio = SocketIO(
 )
 
 DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
+SQLITE_TIMEOUT_SECONDS = 10
+SQLITE_BUSY_TIMEOUT_MS = 5000
+
+
+def configure_sqlite_connection(conn):
+    conn.row_factory = sqlite3.Row
+    conn.execute(f'PRAGMA busy_timeout = {SQLITE_BUSY_TIMEOUT_MS}')
+    conn.execute('PRAGMA foreign_keys = ON')
+    conn.execute('PRAGMA synchronous = NORMAL')
+    conn.execute('PRAGMA temp_store = MEMORY')
+    return conn
+
+
+def initialize_database_runtime():
+    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_TIMEOUT_SECONDS)
+    try:
+        configure_sqlite_connection(conn)
+        conn.execute('PRAGMA journal_mode = WAL')
+
+        tables = {
+            row['name']
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+
+        if 'messages' in tables:
+            conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_messages_room_id_id '
+                'ON messages(room_id, id)'
+            )
+        if 'topics' in tables:
+            conn.execute(
+                'CREATE INDEX IF NOT EXISTS idx_topics_category_name '
+                'ON topics(category, name)'
+            )
+
+        conn.commit()
+    except sqlite3.Error as exc:
+        print(f"SQLite runtime initialization warning: {exc}")
+    finally:
+        conn.close()
+
+
+initialize_database_runtime()
 
 # Swarm State
 bridge_sessions = {}   # {session_id: {"models": [...], "last_seen": timestamp}}
@@ -479,9 +524,8 @@ def bridge_status(session_id):
     return jsonify({"active": False, "models": []})
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    conn = sqlite3.connect(DB_PATH, timeout=SQLITE_TIMEOUT_SECONDS)
+    return configure_sqlite_connection(conn)
 
 def get_setting(key, default=None):
     try:
@@ -684,6 +728,31 @@ def check_nickname():
 # Global state for ACTIVE connections only
 active_rooms = {}
 
+
+def create_room_state(room_id):
+    return {
+        'active_llms': {},
+        'last_activity': time.time(),
+        'last_message': f"Room '{room_id}' created.",
+        'pulse_token': os.urandom(8).hex(),
+    }
+
+
+def cleanup_room_if_empty(room_id, expected_pulse_token=None):
+    room = active_rooms.get(room_id)
+    if not room:
+        return False
+
+    if expected_pulse_token and room.get('pulse_token') != expected_pulse_token:
+        return False
+
+    if room.get('active_llms'):
+        return False
+
+    active_rooms.pop(room_id, None)
+    print(f"DEBUG: Removed idle room #{room_id}")
+    return True
+
 def set_participant_action(room_id, sid, action):
     room = active_rooms.get(room_id)
     if not room:
@@ -882,13 +951,13 @@ def handle_join(data):
         return
 
     if room_id not in active_rooms:
-        active_rooms[room_id] = {
-            'active_llms': {},
-            'last_activity': time.time(),
-            'last_message': f"Room '{room_id}' created."
-        }
+        active_rooms[room_id] = create_room_state(room_id)
         # Start a background autonomous pulse for this room
-        socketio.start_background_task(neural_pulse, room_id)
+        socketio.start_background_task(
+            neural_pulse,
+            room_id,
+            active_rooms[room_id]['pulse_token'],
+        )
     
     # Nickname uniqueness check
     for sid, info in active_rooms[room_id]['active_llms'].items():
@@ -924,18 +993,22 @@ def handle_join(data):
     broadcast_swarm_stats() # Update global node count
     socketio.start_background_task(llm_introduce, request.sid, room_id)
 
-def neural_pulse(room_id):
+def neural_pulse(room_id, pulse_token):
     """The autonomous heartbeat - now much more conservative for slow hardware."""
     print(f"DEBUG: Neural Pulse started for #{room_id}")
-    while room_id in active_rooms:
+    while True:
         socketio.sleep(30) # Check every 30 seconds
-        
+
         room = active_rooms.get(room_id)
-        if not room: break
-        
+        if not room or room.get('pulse_token') != pulse_token:
+            break
+
+        if cleanup_room_if_empty(room_id, expected_pulse_token=pulse_token):
+            break
+
         # Check if anyone is already thinking - if so, don't pulse
         is_anyone_busy = any(p.get('action') == 'thinking' for p in room['active_llms'].values())
-        
+
         # If quiet for too long, no one is busy, and AIs are present
         quiet_duration = time.time() - room['last_activity']
         if quiet_duration > 40 and not is_anyone_busy and room['active_llms']:
@@ -1188,6 +1261,7 @@ def handle_leave(data=None):
             socketio.emit('system_message', sys_msg, room=rid)
             add_to_history(rid, 'system', sys_msg)
             broadcast_llm_list(rid)
+            cleanup_room_if_empty(rid)
             broadcast_swarm_stats() # Update global node count
             
             # Autonomously request the client to kill its local tunnel for security (Kill Switch)
@@ -1195,6 +1269,7 @@ def handle_leave(data=None):
             if session_id:
                 # Tell the specific client browser to execute the kill switch
                 socketio.emit('kill_tunnel', {}, to=request.sid)
+            break
 
 @socketio.on('disconnect')
 def handle_disconnect():
