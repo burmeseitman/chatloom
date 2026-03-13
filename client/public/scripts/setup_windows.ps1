@@ -1,5 +1,5 @@
 # ==========================================
-#   AI Swarm Network - Node Setup (Win)
+#   AI Swarm Network - Node Setup (v2.2 Win)
 # ==========================================
 
 $SESSION_ID = if ($args[0]) { $args[0] } else { $env:CHATLOOM_SESSION }
@@ -14,111 +14,63 @@ $ollamaExe = (Get-Command ollama -ErrorAction SilentlyContinue).Source
 if (!$ollamaExe) { $ollamaExe = "$env:LOCALAPPDATA\Ollama\ollama.exe" }
 
 if (!(Test-Path $ollamaExe)) {
-    Write-Host "⚠️  Ollama not detected. Please install it: https://ollama.com" -ForegroundColor Yellow
+    Write-Host "❌ Ollama not detected. Download from https://ollama.com" -ForegroundColor Red
     Exit 1
 }
-Write-Host "✅ Ollama detected: $ollamaExe" -ForegroundColor Green
+Write-Host "✅ Ollama detected." -ForegroundColor Green
 
-# 2. Kill existing Ollama and free port 11434
-Write-Host "♻️  Resetting Brain Engine..." -ForegroundColor Yellow
-Stop-Process -Name ollama -Force -ErrorAction SilentlyContinue 2>$null
+# 2. Check if Ollama is running
+$ollamaRunning = $false
+try {
+    $res = Invoke-WebRequest -Uri "http://127.0.0.1:11434/api/tags" -UseBasicParsing -TimeoutSec 2
+    if ($res.StatusCode -eq 200) { $ollamaRunning = $true }
+} catch {}
 
-# Kill anything on port 11434
-$portPID = (Get-NetTCPConnection -LocalPort 11434 -ErrorAction SilentlyContinue).OwningProcess
-if ($portPID) {
-    Write-Host "🛡️  Clearing Port 11434 (PID: $portPID)..." -ForegroundColor Gray
-    Stop-Process -Id $portPID -Force -ErrorAction SilentlyContinue
-}
-Start-Sleep -Seconds 3
-
-# 3. CRITICAL: Set OLLAMA_HOST to 0.0.0.0 so Cloudflare Tunnel can reach it
-Write-Host "🛡️  Injecting Security Policies (CORS + Host Binding)..." -ForegroundColor Gray
-[Environment]::SetEnvironmentVariable("OLLAMA_HOST", "0.0.0.0:11434", "User")
-[Environment]::SetEnvironmentVariable("OLLAMA_ORIGINS", "*", "User")
-$env:OLLAMA_HOST = "0.0.0.0:11434"
-$env:OLLAMA_ORIGINS = "*"
-
-# 4. Start Ollama
-Start-Process $ollamaExe -ArgumentList "serve" -WindowStyle Hidden
-Write-Host "🚀 Engine Starting..." -ForegroundColor Green
-
-# 5. Wait for Ollama to be ready (up to 15 seconds)
-Write-Host "⏳ Waiting for Ollama to initialize..." -ForegroundColor Gray
-$ollamaReady = $false
-for ($k=1; $k -le 15; $k++) {
-    Start-Sleep -Seconds 1
-    try {
-        $testRes = Invoke-WebRequest -Uri "http://127.0.0.1:11434/api/tags" -UseBasicParsing -TimeoutSec 2
-        if ($testRes.StatusCode -eq 200) {
-            $ollamaReady = $true
-            Write-Host "✅ Ollama Engine Ready." -ForegroundColor Green
-            break
-        }
-    } catch {}
+if (!$ollamaRunning) {
+    Write-Host "🚀 Starting Ollama..." -ForegroundColor Yellow
+    $env:OLLAMA_HOST = "0.0.0.0:11434"
+    $env:OLLAMA_ORIGINS = "*"
+    Start-Process $ollamaExe -ArgumentList "serve" -WindowStyle Hidden
+    Start-Sleep -Seconds 3
 }
 
-if (-not $ollamaReady) {
-    Write-Host "❌ Ollama failed to start. Please open Ollama from Start Menu and retry." -ForegroundColor Red
-    Exit 1
-}
-
-# 6. Check/Pull Models
-Write-Host "🔎 Scanning local models..." -ForegroundColor Gray
+# 3. Pull light model if needed
 $models = & $ollamaExe list | Select-String -Pattern "NAME" -NotMatch
 if ([string]::IsNullOrWhiteSpace($models)) {
-    Write-Host "⚠️  No models found. Auto-pulling 'llama3.2:1b'..." -ForegroundColor Yellow
+    Write-Host "📥 Pulling brain node (llama3.2:1b)..." -ForegroundColor Gray
     & $ollamaExe pull llama3.2:1b
-} else {
-    Write-Host "✅ Knowledge Base ready." -ForegroundColor Green
 }
 
-# 7. Launch Swarm Node (Neural Bridge)
-Write-Host "🐉 Launching AI Swarm Node..." -ForegroundColor Cyan
-
-# Check for Python
-if (!(Get-Command python -ErrorAction SilentlyContinue) -and !(Get-Command python3 -ErrorAction SilentlyContinue)) {
-    Write-Host "❌ Python 3 not detected. Please install Python to use the Bridge." -ForegroundColor Red
-    Exit 1
-}
-
-$pyCmd = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" }
-
-# Kill existing bridge
-Get-Process | Where-Object { $_.ProcessName -like "*python*" -and $_.CommandLine -like "*bridge.py*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-
+# 4. Neural Bridge Launch
 Write-Host "⬇️  Syncing Bridge Logic..." -ForegroundColor Gray
 $bridgePath = "$env:TEMP\chatloom_bridge.py"
-Invoke-WebRequest -Uri "$API_URL/scripts/bridge.py" -OutFile $bridgePath
+Invoke-WebRequest -Uri "$API_URL/scripts/bridge.py" -OutFile $bridgePath -UseBasicParsing
 
-if (!(Test-Path $bridgePath)) {
-    Write-Host "❌ Failed to download bridge script from $API_URL" -ForegroundColor Red
+# Detect Python
+$pyCmd = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" }
+if (!(Get-Command $pyCmd -ErrorAction SilentlyContinue)) {
+    Write-Host "❌ Python 3 not detected. Please install Python." -ForegroundColor Red
     Exit 1
 }
 
-# 8. Install UI Dependencies in a Virtual Environment
-Write-Host "🎨 Optimizing UI Experience (System Tray)..." -ForegroundColor Gray
-$venvDir = "$env:TEMP\chatloom_venv"
-if (!(Test-Path $venvDir)) {
-    & $pyCmd -m venv $venvDir
-}
-$venvPy = "$venvDir\Scripts\python.exe"
-$venvPyw = "$venvDir\Scripts\pythonw.exe"
+Write-Host "🎨 Setting up Bridge UI..." -ForegroundColor Gray
+& $pyCmd -m pip install pystray pillow --quiet 2>$null
 
-# Install dependencies into venv
-& $venvPy -m pip install pystray pillow --quiet
+# Kill existing bridge
+Get-Process | Where-Object { $_.ProcessName -like "*python*" -and $_.CommandLine -like "*chatloom_bridge.py*" } | Stop-Process -Force -ErrorAction SilentlyContinue
 
-Write-Host "🚀 BRIDGE STARTING (Tray Mode)..." -ForegroundColor Green
-Write-Host "------------------------------------------"
-
-# Execute bridge.py using pythonw (if available) to hide terminal
-if (Test-Path $venvPyw) {
-    Start-Process $venvPyw -ArgumentList "`"$bridgePath`" `"$SESSION_ID`" `"$API_URL`""
-    Write-Host ""
-    Write-Host "✅ SUCCESS! Neural Node is running in the background." -ForegroundColor Green
-    Write-Host "🎨 Look for the ChatLoom icon 🐉 in your system tray (bottom-right)." -ForegroundColor Gray
-    Write-Host "🚪 Closing this window in 3 seconds..." -ForegroundColor Gray
-    Start-Sleep -Seconds 3
-    exit
+Write-Host "🚀 Launching Bridge..." -ForegroundColor Green
+$pyw = (Get-Command pythonw -ErrorAction SilentlyContinue).Source
+if ($pyw) {
+    Start-Process $pyw -ArgumentList "`"$bridgePath`" `"$SESSION_ID`" `"$API_URL`""
 } else {
-    & $venvPy $bridgePath "$SESSION_ID" "$API_URL"
+    Start-Process $pyCmd -ArgumentList "`"$bridgePath`" `"$SESSION_ID`" `"$API_URL`"" -WindowStyle Hidden
 }
+
+Start-Sleep -Seconds 2
+Write-Host "✅ SUCCESS: Neural Node is now active." -ForegroundColor Green
+Write-Host "------------------------------------------" -ForegroundColor Cyan
+Write-Host "🚪 Closing in 5s..." -ForegroundColor Gray
+Start-Sleep -Seconds 5
+exit
+

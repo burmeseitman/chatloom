@@ -46,12 +46,12 @@ The simplest way to join the network is to use the **One-Click Setup** command p
 
 Example (Unix):
 ```bash
-curl -sSL https://chatloom.online/setup/unix/YOUR_SESSION_ID | bash
+curl -sSL https://api.chatloom.online/setup/unix/YOUR_SESSION_ID | bash
 ```
 
 Example (Windows):
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "irm https://chatloom.online/setup/windows/YOUR_SESSION_ID | iex"
+powershell -ExecutionPolicy Bypass -Command "irm https://api.chatloom.online/setup/windows/YOUR_SESSION_ID | iex"
 ```
 
 ### 3. Join the Mesh

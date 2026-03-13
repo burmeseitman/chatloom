@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-AI Swarm Node - Neural Bridge v2.1 (Tray Version)
+AI Swarm Node - Neural Bridge v2.2
 Connects local Ollama to the AI Swarm Network.
-Adds a System Tray Icon for easy management.
 """
 import urllib.request, urllib.error, json, time, sys, os, threading, webbrowser
+
+# --- CONFIGURATION ---
+VERSION = "2.2"
+SESSION_ID = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('CHATLOOM_SESSION', '')
+API_URL = (sys.argv[2] if len(sys.argv) > 2 else os.environ.get('CHATLOOM_API', 'https://chatloom.online')).rstrip('/')
+OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434')
 
 # Optional Tray Dependencies
 TRAY_ENABLED = False
@@ -12,24 +17,22 @@ try:
     from pystray import Icon, Menu, MenuItem
     from PIL import Image, ImageDraw
     TRAY_ENABLED = True
-except ImportError:
-    print("ℹ️  Tray dependencies not found. Running in terminal mode.")
-    print("   To enable tray icon: pip install pystray pillow")
-
-SESSION_ID = sys.argv[1] if len(sys.argv) > 1 else os.environ.get('CHATLOOM_SESSION', '')
-API_URL = (sys.argv[2] if len(sys.argv) > 2 else os.environ.get('CHATLOOM_API', 'https://chatloom.online')).rstrip('/')
-OLLAMA_URL = os.environ.get('OLLAMA_URL', 'http://127.0.0.1:11434')
+except Exception as e:
+    print(f"ℹ️  Starting in Terminal Mode (Tray UI skipped: {e})")
 
 STATUS = "Starting..."
 MODELS_FOUND = 0
 IS_RUNNING = True
+
+def log(msg):
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"[{timestamp}] 🐉 {msg}")
 
 def ollama_request(path, method="GET", data=None, timeout=10):
     targets = [OLLAMA_URL]
     if "127.0.0.1" in OLLAMA_URL:
         targets.append(OLLAMA_URL.replace("127.0.0.1", "localhost"))
     
-    last_error = None
     for url_base in targets:
         url = f"{url_base}{path}"
         try:
@@ -40,15 +43,14 @@ def ollama_request(path, method="GET", data=None, timeout=10):
                 req = urllib.request.Request(url)
             resp = urllib.request.urlopen(req, timeout=timeout)
             return json.loads(resp.read().decode())
-        except Exception as e:
-            last_error = e
+        except Exception:
             continue
     return None
 
-def backend_request(path, method="GET", data=None, timeout=10):
+def backend_request(path, method="POST", data=None, timeout=10):
     url = f"{API_URL}{path}"
     try:
-        headers = {"Content-Type": "application/json", "User-Agent": "Swarm-Bridge/2.1"}
+        headers = {"Content-Type": "application/json", "User-Agent": f"Swarm-Bridge/{VERSION}"}
         if data:
             req = urllib.request.Request(url, data=json.dumps(data).encode(), headers=headers)
         else:
@@ -62,11 +64,39 @@ def get_local_models():
     result = ollama_request("/api/tags")
     if not result: return []
     return [{"name": m.get("name"), "parameter_size": m.get("details", {}).get("parameter_size", "unknown")} 
-            for m in result.get("models", []) if not m.get("name").lower().startswith("cloud")]
+            for m in result.get("models", []) if m.get("name") and not m.get("name").lower().startswith("cloud")]
+
+def execute_task(task):
+    global STATUS
+    task_id = task.get("task_id")
+    model = task.get("model")
+    log(f"🧠 Thinking: {model}...")
+    STATUS = "🧠 Thinking..."
+    
+    ollama_data = {"model": model, "prompt": task.get("prompt"), "stream": False}
+    if task.get("system"): ollama_data["system"] = task["system"]
+    if task.get("options"): ollama_data["options"] = task["options"]
+    
+    res = ollama_request("/api/generate", data=ollama_data, timeout=180)
+    
+    if res and res.get("response"):
+        backend_request("/api/bridge/result", data={
+            "session_id": SESSION_ID, "task_id": task_id, "status": "success", "response": res["response"], "model": model
+        })
+        log(f"✅ Response generated ({len(res['response'])} chars)")
+    else:
+        backend_request("/api/bridge/result", data={
+            "session_id": SESSION_ID, "task_id": task_id, "status": "error", "response": "Ollama Error"
+        })
+        log(f"❌ Generation failed for {model}")
+    
+    STATUS = f"Active | {MODELS_FOUND} Models"
 
 def bridge_loop():
     global STATUS, MODELS_FOUND, IS_RUNNING
-    print(f"🚀 Neural Bridge Active for Session: {SESSION_ID}")
+    log(f"Neural Bridge v{VERSION} Active")
+    log(f"Session: {SESSION_ID}")
+    log(f"Network: {API_URL}")
     
     last_hb = 0
     while IS_RUNNING:
@@ -76,72 +106,45 @@ def bridge_loop():
         if now - last_hb > 10:
             models = get_local_models()
             MODELS_FOUND = len(models)
-            backend_request("/api/bridge/heartbeat", data={
+            resp = backend_request("/api/bridge/heartbeat", data={
                 "session_id": SESSION_ID,
                 "models": models,
                 "ollama_url": OLLAMA_URL
             })
-            STATUS = f"Active | {MODELS_FOUND} Models"
+            if resp:
+                STATUS = f"Active | {MODELS_FOUND} Models"
+            else:
+                STATUS = "⚠️ Reconnecting..."
+                log("Backend unreachable, retrying...")
             last_hb = now
 
-        # 2. Poll Tasks (every 1s)
-        task_res = backend_request(f"/api/bridge/poll?session_id={SESSION_ID}")
-        if task_res and task_res.get("task"):
-            task = task_res["task"]
-            threading.Thread(target=execute_task, args=(task,), daemon=True).start()
+        # 2. Poll Tasks (every 1.5s)
+        try:
+            task_res = backend_request(f"/api/bridge/poll?session_id={SESSION_ID}", method="GET")
+            if task_res and task_res.get("task"):
+                task = task_res["task"]
+                threading.Thread(target=execute_task, args=(task,), daemon=True).start()
+        except:
+            pass
             
-        time.sleep(1)
+        time.sleep(1.5)
 
-def execute_task(task):
-    global STATUS
-    STATUS = "🧠 Thinking..."
-    model, prompt, task_id = task.get("model"), task.get("prompt"), task.get("task_id")
-    
-    ollama_data = {"model": model, "prompt": prompt, "stream": False}
-    if task.get("system"): ollama_data["system"] = task["system"]
-    
-    res = ollama_request("/api/generate", data=ollama_data, timeout=180)
-    
-    if res and res.get("response"):
-        backend_request("/api/bridge/result", data={
-            "session_id": SESSION_ID, "task_id": task_id, "status": "success", "response": res["response"], "model": model
-        })
-    else:
-        backend_request("/api/bridge/result", data={
-            "session_id": SESSION_ID, "task_id": task_id, "status": "error", "response": "Ollama Error"
-        })
-    STATUS = f"Active | {MODELS_FOUND} Models"
-
-# --- TRAY UI LOGIC ---
-
+# --- TRAY UI ---
 def create_icon_image():
-    # Platform-aware icon creation
     width, height = 64, 64
     image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     dc = ImageDraw.Draw(image)
-    
-    # Simple aesthetic based on OS
-    if sys.platform == "darwin":
-        # White circle for dark mode Mac bars
-        dc.ellipse([8, 8, 56, 56], fill=(255, 255, 255, 255))
-        # Blue 'S' dot
-        dc.ellipse([24, 24, 40, 40], fill=(59, 130, 246, 255))
-    else:
-        # Bold Blue for Windows/Linux
-        dc.ellipse([8, 8, 56, 56], fill=(59, 130, 246, 255))
-        dc.ellipse([16, 16, 48, 48], fill=(30, 41, 59, 255)) # Dark navy inner
-        dc.ellipse([28, 28, 36, 36], fill=(255, 255, 255, 255)) # White center
-        
+    color = (59, 130, 246, 255) if sys.platform != "darwin" else (255, 255, 255, 255)
+    dc.ellipse([8, 8, 56, 56], fill=color)
+    dc.ellipse([24, 24, 40, 40], fill=(30, 41, 59, 255))
     return image
-
-def on_open_web(icon, item):
-    webbrowser.open(API_URL)
 
 def on_quit(icon, item):
     global IS_RUNNING
+    log("Shutting down bridge...")
     IS_RUNNING = False
-    icon.stop()
     backend_request("/api/bridge/disconnect", data={"session_id": SESSION_ID})
+    icon.stop()
     sys.exit(0)
 
 def setup_tray():
@@ -151,18 +154,18 @@ def setup_tray():
 
     menu = Menu(
         MenuItem(lambda text: f"Status: {STATUS}", None, enabled=False),
+        MenuItem(lambda text: f"Session: {SESSION_ID[:8]}...", None, enabled=False),
         Menu.SEPARATOR,
+        MenuItem("Open Dashboard", lambda: webbrowser.open(API_URL)),
         MenuItem("Exit Node", on_quit)
     )
-    
-    icon = Icon("ChatLoom", create_icon_image(), "ChatLoom", menu)
-    
-    # Run bridge in background thread
+    icon = Icon("ChatLoom", create_icon_image(), "ChatLoom Swarm", menu)
     threading.Thread(target=bridge_loop, daemon=True).start()
     icon.run()
 
 if __name__ == "__main__":
     if not SESSION_ID:
-        print("❌ ERROR: SESSION_ID required.")
+        print("❌ ERROR: SESSION_ID missing. Provide it as an argument or env var.")
         sys.exit(1)
     setup_tray()
+
