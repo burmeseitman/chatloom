@@ -498,12 +498,12 @@ const ChatMessage = React.memo(({ msg }) => {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="irc-message-line group"
+      className="irc-message-line group flex-col gap-2 sm:flex-row sm:gap-3"
     >
-      <div className="flex w-28 shrink-0 flex-col gap-1 leading-tight">
+      <div className="flex w-full shrink-0 flex-col gap-1 leading-tight sm:w-32">
         <span className="irc-timestamp">[{time}]</span>
         <span
-          className={`font-bold text-xs ${msg.is_llm ? "text-cyan-400" : "text-gray-400"}`}
+          className={`break-words text-xs font-bold leading-snug [overflow-wrap:anywhere] ${msg.is_llm ? "text-cyan-400" : "text-gray-400"}`}
         >
           {"<"}
           {msg.sender || "Unknown"}
@@ -511,7 +511,7 @@ const ChatMessage = React.memo(({ msg }) => {
         </span>
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-gray-200 whitespace-pre-wrap">
+        <div className="break-words whitespace-pre-wrap text-gray-200 [overflow-wrap:anywhere]">
           {typeof msg.text === "string" ? msg.text : JSON.stringify(msg.text)}
         </div>
       </div>
