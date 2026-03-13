@@ -42,28 +42,58 @@ def has_gui_session():
         return True
     return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
 
-def import_tray_modules():
+def reset_pystray_modules():
+    for module_name in list(sys.modules):
+        if module_name == "pystray" or module_name.startswith("pystray."):
+            del sys.modules[module_name]
+
+def import_tray_modules(backend=None):
     global Icon, Menu, MenuItem, Image, ImageDraw
+    if backend:
+        os.environ["PYSTRAY_BACKEND"] = backend
+    elif "PYSTRAY_BACKEND" in os.environ:
+        del os.environ["PYSTRAY_BACKEND"]
+
+    reset_pystray_modules()
     try:
         from pystray import Icon as _Icon, Menu as _Menu, MenuItem as _MenuItem
         from PIL import Image as _Image, ImageDraw as _ImageDraw
     except Exception as exc:
-        return False, str(exc)
+        return False, str(exc), backend or "auto"
 
     Icon = _Icon
     Menu = _Menu
     MenuItem = _MenuItem
     Image = _Image
     ImageDraw = _ImageDraw
-    return True, None
+    return True, None, backend or "auto"
+
+def linux_backend_candidates():
+    session_type = (os.environ.get("XDG_SESSION_TYPE") or "").lower()
+    is_wayland = bool(os.environ.get("WAYLAND_DISPLAY")) or session_type == "wayland"
+
+    # pystray docs recommend AppIndicator on Linux. On GNOME, GTK often starts
+    # successfully but still does not render a visible icon.
+    if is_wayland:
+        return ["appindicator", "gtk"]
+    return ["appindicator", "xorg", "gtk"]
 
 def ensure_tray_support():
     if not has_gui_session():
         return False, "No GUI session available for tray icon"
 
-    ok, err = import_tray_modules()
-    if ok:
-        return True, None
+    if sys.platform.startswith("linux"):
+        for backend in linux_backend_candidates():
+            ok, err, selected_backend = import_tray_modules(backend)
+            if ok:
+                log(f"Tray backend selected: {selected_backend}")
+                return True, None
+            log(f"Tray backend {backend} unavailable: {err}")
+    else:
+        ok, err, selected_backend = import_tray_modules()
+        if ok:
+            log(f"Tray backend selected: {selected_backend}")
+            return True, None
 
     log(f"Tray dependencies missing. Attempting background install: {err}")
     try:
@@ -77,7 +107,19 @@ def ensure_tray_support():
     except Exception as install_err:
         return False, f"Dependency install failed: {install_err}"
 
-    return import_tray_modules()
+    if sys.platform.startswith("linux"):
+        for backend in linux_backend_candidates():
+            ok, err, selected_backend = import_tray_modules(backend)
+            if ok:
+                log(f"Tray backend selected after install: {selected_backend}")
+                return True, None
+        return False, err
+
+    ok, err, selected_backend = import_tray_modules()
+    if ok:
+        log(f"Tray backend selected after install: {selected_backend}")
+        return True, None
+    return False, err
 
 def ollama_request(path, method="GET", data=None, timeout=10):
     targets = [OLLAMA_URL]
@@ -210,7 +252,7 @@ def setup_tray():
         MenuItem(lambda text: f"Status: {STATUS}", None, enabled=False),
         MenuItem(lambda text: f"Session: {SESSION_ID[:8]}...", None, enabled=False),
         Menu.SEPARATOR,
-        MenuItem("Open Dashboard", lambda: webbrowser.open(API_URL)),
+        MenuItem("Open Dashboard", lambda icon, item: webbrowser.open(API_URL), default=not getattr(Icon, "HAS_MENU", True)),
         MenuItem("Exit Node", on_quit)
     )
     icon = Icon("ChatLoom", create_icon_image(), "ChatLoom Swarm", menu)
