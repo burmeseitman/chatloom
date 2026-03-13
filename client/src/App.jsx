@@ -54,11 +54,12 @@ import {
 
 // Use public/logo.png for the header image
 const LOGO_IMAGE = "/logo.png";
-// Configure Backend URL for production (Hardcoded for stability)
-const BACKEND_URL = "https://api.chatloom.online";
+// Configure Backend URL: Use Vite env var if set (for Cloudflare Builds), 
+// fallback to hardcoded tunnel URL for absolute stability.
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "https://api.chatloom.online";
 const socket = io(BACKEND_URL, { 
   path: "/socket.io",
-  transports: ['websocket'], // Prefer websocket for tunnel stability
+  transports: ['websocket'],
   secure: true,
   reconnection: true
 });

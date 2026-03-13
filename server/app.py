@@ -87,12 +87,21 @@ ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173"
 ]
 
-CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}})
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin')
+    if origin:
+        if origin in ALLOWED_ORIGINS or origin.endswith('.pages.dev'):
+            response.headers.add('Access-Control-Allow-Origin', origin)
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+            response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
 
 # Initialize SocketIO with authorized origins
 socketio = SocketIO(
     app, 
-    cors_allowed_origins=ALLOWED_ORIGINS, 
+    cors_allowed_origins="*", 
     async_mode='gevent',
     path='/socket.io',
     logger=False, # Disable logging in production for performance
