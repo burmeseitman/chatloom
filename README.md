@@ -108,6 +108,14 @@ We recommend using the provided automated setup for Ubuntu:
 sudo bash ./host_setup.sh
 ```
 
+For updates on an already-running production VPS:
+```bash
+sudo bash ./deploy_production.sh
+```
+
+Full operational checklist:
+- [Production Deployment Checklist](docs/production-deployment-checklist.md)
+
 ### Cloudflare Tunnel Configuration
 Map your hostname to the backend (Port 5001):
 ```yaml
@@ -131,6 +139,7 @@ Deploy the `client/dist` folder to Cloudflare Pages, Vercel, or Netlify. Set `VI
 
 ```text
 ├── client/           # React frontend (Vite + Tailwind)
+├── deploy_production.sh  # Existing production update script
 ├── server/           # Flask backend & SQLite database
 ├── docs/             # Visual assets & documentation
 └── host_setup.sh     # Automated host setup scripts
@@ -145,4 +154,3 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 <div align="center">
   <sub>Built with ❤️ by the Burmese Stack</sub>
 </div>
-
