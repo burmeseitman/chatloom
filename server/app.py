@@ -395,8 +395,7 @@ def announce_peer():
         return jsonify({"status": "joined", "swarm_size": len(swarm_peers)})
     return jsonify({"status": "error"}), 400
 
-@app.route('/setup/<platform>/<session_id>', methods=['GET'])
-def serve_setup_script(platform, session_id):
+def serve_session_bound_script(platform, session_id, script_name):
     if not is_valid_session_id(session_id):
         return jsonify({"error": "Invalid session"}), 400
 
@@ -407,7 +406,6 @@ def serve_setup_script(platform, session_id):
     if not validate_bridge_session(session_id, bridge_token):
         return jsonify({"error": "Unauthorized bridge setup request"}), 401
 
-    script_name = "setup_unix.sh" if platform == "unix" else "setup_windows.ps1"
     script_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'client', 'public', 'scripts', script_name)
     
     if not os.path.exists(script_path):
@@ -441,6 +439,16 @@ def serve_setup_script(platform, session_id):
         return content, 200, {'Content-Type': 'text/plain; charset=utf-8'}
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/setup/<platform>/<session_id>', methods=['GET'])
+def serve_setup_script(platform, session_id):
+    script_name = "setup_unix.sh" if platform == "unix" else "setup_windows.ps1"
+    return serve_session_bound_script(platform, session_id, script_name)
+
+@app.route('/uninstall/<platform>/<session_id>', methods=['GET'])
+def serve_uninstall_script(platform, session_id):
+    script_name = "uninstall_unix.sh" if platform == "unix" else "uninstall_windows.ps1"
+    return serve_session_bound_script(platform, session_id, script_name)
 
 # ===================== BRIDGE API =====================
 

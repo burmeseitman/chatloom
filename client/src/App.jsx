@@ -1444,11 +1444,23 @@ function App() {
   const secureSetupWinUrl = authReady
     ? `${apiBase}/setup/windows/${encodeURIComponent(sessionId)}?bridge_token=${encodeURIComponent(bridgeToken)}`
     : "";
+  const secureUninstallUrl = authReady
+    ? `${apiBase}/uninstall/unix/${encodeURIComponent(sessionId)}?bridge_token=${encodeURIComponent(bridgeToken)}`
+    : "";
+  const secureUninstallWinUrl = authReady
+    ? `${apiBase}/uninstall/windows/${encodeURIComponent(sessionId)}?bridge_token=${encodeURIComponent(bridgeToken)}`
+    : "";
   const swarmUnixCmd = authReady
     ? `curl -fsSL "${secureSetupUrl}" | bash`
     : "Securing session...";
   const swarmWinCmd = authReady
     ? `powershell -ExecutionPolicy Bypass -Command "irm '${secureSetupWinUrl}' | iex"`
+    : "Securing session...";
+  const swarmUnixUninstallCmd = authReady
+    ? `curl -fsSL "${secureUninstallUrl}" | bash`
+    : "Securing session...";
+  const swarmWinUninstallCmd = authReady
+    ? `powershell -ExecutionPolicy Bypass -Command "irm '${secureUninstallWinUrl}' | iex"`
     : "Securing session...";
 
   if (step === "topics") {
@@ -1533,6 +1545,7 @@ function App() {
           activeTasks={swarmStats.active_tasks || 0} 
           bridgeActive={bridgeActive}
           setupCommand={isWindows ? swarmWinCmd : swarmUnixCmd}
+          uninstallCommand={isWindows ? swarmWinUninstallCmd : swarmUnixUninstallCmd}
         />
 
         <div className="px-4 md:px-8 w-full flex flex-col items-center pt-20 pb-12">

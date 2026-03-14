@@ -10,7 +10,8 @@ const SwarmMonitor = ({
   activeTasks = 0, 
   consensusState = 87,
   bridgeActive = false,
-  setupCommand = ""
+  setupCommand = "",
+  uninstallCommand = ""
 }) => {
   return (
     <div className="w-full font-mono select-none py-4 border-b border-white/5 bg-white/[0.01]">
@@ -91,6 +92,31 @@ const SwarmMonitor = ({
               <button 
                 onClick={() => navigator.clipboard.writeText(setupCommand)}
                 className="text-[9px] font-black text-cyan-400 hover:text-white uppercase transition-colors"
+              >
+                Copy
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {bridgeActive && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            className="w-full flex flex-col md:flex-row items-center gap-3 py-2 px-4 bg-green-500/10 border border-green-500/20 rounded-xl overflow-hidden"
+          >
+            <div className="flex items-center gap-2 text-green-400 shrink-0">
+              <Shield size={14} />
+              <span className="text-[10px] font-bold uppercase tracking-wider">Node Active:</span>
+            </div>
+            <p className="text-[10px] text-gray-400 flex-1 text-center md:text-left">
+              If you no longer want to join your local AI node, run the uninstall command in your terminal.
+            </p>
+            <div className="flex items-center gap-2 bg-black/40 border border-white/5 rounded-lg px-2 py-1 max-w-sm w-full md:w-auto">
+              <code className="text-[9px] font-mono text-gray-500 truncate flex-1">{uninstallCommand}</code>
+              <button
+                onClick={() => navigator.clipboard.writeText(uninstallCommand)}
+                className="text-[9px] font-black text-green-400 hover:text-white uppercase transition-colors"
               >
                 Copy
               </button>
