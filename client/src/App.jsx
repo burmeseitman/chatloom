@@ -99,6 +99,11 @@ const readStoredValue = (key, fallback = "") => {
   return localStorage.getItem(key) || fallback;
 };
 
+const readStoredPatternValue = (key, pattern) => {
+  const value = readStoredValue(key, "");
+  return pattern.test(value) ? value : "";
+};
+
 const generateSecureToken = (byteLength = 16) => {
   const bytes = new Uint8Array(byteLength);
   const cryptoApi = globalThis.crypto;
@@ -112,28 +117,6 @@ const generateSecureToken = (byteLength = 16) => {
   }
 
   return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
-};
-
-const ensureStoredToken = (key, byteLength = 16) => {
-  const currentValue = readStoredValue(key, "");
-  if (SECURE_TOKEN_PATTERN.test(currentValue)) {
-    return currentValue;
-  }
-
-  const nextValue = generateSecureToken(byteLength);
-  localStorage.setItem(key, nextValue);
-  return nextValue;
-};
-
-const ensureStoredSessionId = () => {
-  const currentValue = readStoredValue(SESSION_ID_KEY, "");
-  if (SESSION_ID_PATTERN.test(currentValue)) {
-    return currentValue;
-  }
-
-  const nextValue = generateSecureToken(16);
-  localStorage.setItem(SESSION_ID_KEY, nextValue);
-  return nextValue;
 };
 
 const modelsMatch = (left, right) =>
@@ -625,11 +608,15 @@ function App() {
   });
   const [joinError, setJoinError] = useState("");
   const [isTopicsLoading, setIsTopicsLoading] = useState(false);
-  const [sessionId] = useState(() => {
-    return ensureStoredSessionId();
-  });
-  const [clientToken] = useState(() => ensureStoredToken(CLIENT_TOKEN_KEY, 24));
-  const [bridgeToken] = useState(() => ensureStoredToken(BRIDGE_TOKEN_KEY, 24));
+  const [sessionId, setSessionId] = useState(() =>
+    readStoredPatternValue(SESSION_ID_KEY, SESSION_ID_PATTERN),
+  );
+  const [clientToken, setClientToken] = useState(() =>
+    readStoredPatternValue(CLIENT_TOKEN_KEY, SECURE_TOKEN_PATTERN),
+  );
+  const [bridgeToken, setBridgeToken] = useState(() =>
+    readStoredPatternValue(BRIDGE_TOKEN_KEY, SECURE_TOKEN_PATTERN),
+  );
   const [authReady, setAuthReady] = useState(false);
 
   const withClientAuth = (config = {}) => ({
@@ -640,12 +627,22 @@ function App() {
     },
   });
 
+  const clearStoredSession = () => {
+    localStorage.removeItem(SESSION_ID_KEY);
+    localStorage.removeItem(CLIENT_TOKEN_KEY);
+    localStorage.removeItem(BRIDGE_TOKEN_KEY);
+  };
+
   const resetSecureSession = () => {
-    localStorage.setItem(SESSION_ID_KEY, generateSecureToken(16));
-    localStorage.setItem(CLIENT_TOKEN_KEY, generateSecureToken(24));
-    localStorage.setItem(BRIDGE_TOKEN_KEY, generateSecureToken(24));
+    clearStoredSession();
     localStorage.removeItem("chat_step");
-    window.location.reload();
+    setAuthReady(false);
+    setSessionId("");
+    setClientToken("");
+    setBridgeToken("");
+    if (socket.connected) {
+      socket.disconnect();
+    }
   };
 
   useEffect(() => {
@@ -653,16 +650,43 @@ function App() {
 
     const registerSecureSession = async () => {
       try {
-        await axios.post(
+        const payload = {};
+        if (SESSION_ID_PATTERN.test(sessionId)) {
+          payload.session_id = sessionId;
+        }
+        if (SECURE_TOKEN_PATTERN.test(clientToken)) {
+          payload.client_token = clientToken;
+        }
+
+        const response = await axios.post(
           `${BACKEND_URL}/api/session/register`,
+          payload,
           {
-            session_id: sessionId,
-            client_token: clientToken,
-            bridge_token: bridgeToken,
+            timeout: 8000,
+            headers: SECURE_TOKEN_PATTERN.test(clientToken)
+              ? { "X-Chatloom-Client-Token": clientToken }
+              : undefined,
           },
-          { timeout: 8000 },
         );
+        const nextSessionId = response.data?.session_id || "";
+        const nextClientToken = response.data?.client_token || "";
+        const nextBridgeToken = response.data?.bridge_token || "";
+
+        if (
+          !SESSION_ID_PATTERN.test(nextSessionId) ||
+          !SECURE_TOKEN_PATTERN.test(nextClientToken) ||
+          !SECURE_TOKEN_PATTERN.test(nextBridgeToken)
+        ) {
+          throw new Error("Server returned invalid session credentials");
+        }
+
         if (isActive) {
+          localStorage.setItem(SESSION_ID_KEY, nextSessionId);
+          localStorage.setItem(CLIENT_TOKEN_KEY, nextClientToken);
+          localStorage.setItem(BRIDGE_TOKEN_KEY, nextBridgeToken);
+          if (nextSessionId !== sessionId) setSessionId(nextSessionId);
+          if (nextClientToken !== clientToken) setClientToken(nextClientToken);
+          if (nextBridgeToken !== bridgeToken) setBridgeToken(nextBridgeToken);
           setAuthReady(true);
         }
       } catch (error) {
@@ -1326,6 +1350,10 @@ function App() {
     });
 
     if (!socket.connected) {
+      socket.auth = {
+        session_id: sessionId,
+        client_token: clientToken,
+      };
       socket.connect();
     }
 
@@ -1401,6 +1429,8 @@ function App() {
     socket.emit("message", {
       text: inputValue,
       sender: senderName,
+      client_token: clientToken,
+      session_id: sessionId,
       room_id: selectedTopic,
     });
     setInputValue("");

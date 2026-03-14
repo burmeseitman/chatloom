@@ -4,6 +4,7 @@ from gevent.pywsgi import WSGIServer
 from geventwebsocket.handler import WebSocketHandler
 import hmac
 import os
+import secrets
 import shlex
 import sqlite3
 from flask import Flask, jsonify, request
@@ -46,6 +47,7 @@ ALLOWED_ORIGINS = sorted(
 )
 
 session_credentials = {}  # {session_id: {"client_token": str, "bridge_token": str, "last_seen": ts}}
+socket_sessions = {}  # {sid: {"session_id": str, "room_id": str|None, "participant_name": str|None, "last_seen": ts}}
 
 def is_valid_session_id(value):
     return isinstance(value, str) and bool(SESSION_ID_PATTERN.fullmatch(value))
@@ -77,10 +79,53 @@ def powershell_quote(value):
 def read_request_json():
     return request.get_json(silent=True) or {}
 
+def generate_session_id():
+    return secrets.token_hex(16)
+
+def generate_session_token(byte_length=24):
+    return secrets.token_hex(byte_length)
+
+def issue_session_credentials():
+    while True:
+        session_id = generate_session_id()
+        if session_id not in session_credentials:
+            break
+
+    credentials = {
+        "client_token": generate_session_token(24),
+        "bridge_token": generate_session_token(24),
+        "last_seen": time.time(),
+    }
+    session_credentials[session_id] = credentials
+    return session_id, credentials
+
+def build_session_payload(session_id, credentials):
+    return {
+        "status": "success",
+        "session_id": session_id,
+        "client_token": credentials["client_token"],
+        "bridge_token": credentials["bridge_token"],
+    }
+
 def get_session_credentials(session_id):
     if not is_valid_session_id(session_id):
         return None
     return session_credentials.get(session_id)
+
+def bind_socket_session(sid, session_id, room_id=None, participant_name=None):
+    socket_sessions[sid] = {
+        "session_id": session_id,
+        "room_id": room_id,
+        "participant_name": participant_name,
+        "last_seen": time.time(),
+    }
+    return socket_sessions[sid]
+
+def get_socket_session(sid):
+    return socket_sessions.get(sid)
+
+def clear_socket_session(sid):
+    return socket_sessions.pop(sid, None)
 
 def validate_client_session(session_id, client_token):
     credentials = get_session_credentials(session_id)
@@ -315,32 +360,26 @@ def get_bootstrap_nodes():
 
 @app.route('/api/session/register', methods=['POST'])
 def register_session():
-    """Register or refresh browser-owned session credentials."""
+    """Issue server-owned session credentials or refresh an existing session."""
     data = read_request_json()
     session_id = data.get("session_id")
-    client_token = data.get("client_token")
-    bridge_token = data.get("bridge_token")
+    client_token = data.get("client_token") or request.headers.get(CLIENT_TOKEN_HEADER, "")
 
-    if not (
-        is_valid_session_id(session_id)
-        and is_valid_session_token(client_token)
-        and is_valid_session_token(bridge_token)
-    ):
-        return jsonify({"status": "error", "message": "Invalid session credentials"}), 400
+    existing = None
+    if is_valid_session_id(session_id) and is_valid_session_token(client_token):
+        existing = validate_client_session(session_id, client_token)
 
-    existing = session_credentials.get(session_id)
-    if existing and not hmac.compare_digest(existing.get("client_token", ""), client_token):
+    if existing:
+        return jsonify(build_session_payload(session_id, existing))
+
+    if is_valid_session_id(session_id) and session_id in session_credentials:
         return jsonify({
             "status": "error",
             "message": "Session is already registered with different credentials",
         }), 409
 
-    session_credentials[session_id] = {
-        "client_token": client_token,
-        "bridge_token": bridge_token,
-        "last_seen": time.time(),
-    }
-    return jsonify({"status": "success"})
+    issued_session_id, credentials = issue_session_credentials()
+    return jsonify(build_session_payload(issued_session_id, credentials))
 
 @app.route('/api/swarm/announce', methods=['POST'])
 def announce_peer():
@@ -909,6 +948,15 @@ def handle_socket_connect(auth=None):
         print(f"SECURITY: Rejected socket connection from origin {origin}")
         return False
 
+    auth = auth or {}
+    session_id = auth.get('session_id')
+    client_token = auth.get('client_token')
+    if not validate_client_session(session_id, client_token):
+        print(f"SECURITY: Rejected socket connection with invalid session from {request.remote_addr}")
+        return False
+
+    bind_socket_session(request.sid, session_id)
+
 @socketio.on('join')
 def handle_join(data):
     data = data or {}
@@ -926,6 +974,11 @@ def handle_join(data):
 
     if not validate_client_session(session_id, data.get('client_token')):
         emit('join_error', {'message': "Secure session validation failed. Refresh and try again."})
+        return
+
+    socket_session = get_socket_session(request.sid)
+    if not socket_session or socket_session.get('session_id') != session_id:
+        emit('join_error', {'message': "Socket session is not authenticated. Refresh and try again."})
         return
 
     if model_origin != "Neural Bridge":
@@ -972,6 +1025,7 @@ def handle_join(data):
     for osid in old_sids:
         if osid in active_rooms[room_id]['active_llms']:
             del active_rooms[room_id]['active_llms'][osid]
+        clear_socket_session(osid)
 
     active_rooms[room_id]['active_llms'][request.sid] = {
         "name": name, 
@@ -982,6 +1036,7 @@ def handle_join(data):
         "origin": model_origin,
         "action": "idle"
     }
+    bind_socket_session(request.sid, session_id, room_id=room_id, participant_name=name)
     
     sys_msg = {"text": f"SYSTEM: {name} (AI Guardian) has joined the discussion.", "type": "join"}
     socketio.emit('system_message', sys_msg, room=room_id)
@@ -1153,19 +1208,34 @@ def handle_llm_response(data):
 
 @socketio.on('message')
 def handle_message(data):
+    data = data or {}
+    socket_session = get_socket_session(request.sid)
+    if not socket_session:
+        emit('join_error', {'message': "Secure chat session expired. Refresh and rejoin the room."})
+        return
+
+    session_id = socket_session.get('session_id')
+    if not validate_client_session(session_id, data.get('client_token')):
+        clear_socket_session(request.sid)
+        emit('join_error', {'message': "Secure chat session expired. Refresh and rejoin the room."})
+        return
+
+    room_id = sanitize_text(data.get('room_id', ''))
+    if not room_id or room_id != socket_session.get('room_id'):
+        emit('join_error', {'message': "Invalid room context. Rejoin the room before sending messages."})
+        return
+
+    if room_id not in active_rooms or request.sid not in active_rooms[room_id]['active_llms']:
+        clear_socket_session(request.sid)
+        emit('join_error', {'message': "You are not joined to this room. Reconnect and try again."})
+        return
+
     raw_text = data.get('text', '')
-    sender = sanitize_text(data.get('sender', 'Human'))
-    room_id = data.get('room_id')
-    if not room_id: return
+    sender_base = sanitize_text(socket_session.get('participant_name', 'Human')) or 'Human'
+    sender = f"{sender_base}_guardian"
 
     text = sanitize_text(raw_text)
     if not text: return
-    
-    # Identity Verification for Humans (prevent spoofing an AI Name)
-    if room_id in active_rooms:
-        for info in active_rooms[room_id]['active_llms'].values():
-            if sender.lower() == info['name'].lower() and request.sid not in active_rooms[room_id]['active_llms']:
-                sender = f"(Human) {sender}" # Tag it so they can't impersonate
 
     if scan_for_injection(text):
         print(f"SECURITY: Potential prompt injection blocked from User '{sender}' in room '{room_id}'")
@@ -1250,6 +1320,7 @@ def llm_participate(room_id, last_message, turn=1, max_turns=10, target_sid=None
 
 @socketio.on('leave')
 def handle_leave(data=None):
+    clear_socket_session(request.sid)
     # Search rooms to find the participant by sid
     for rid, info in list(active_rooms.items()):
         if request.sid in info['active_llms']:
