@@ -1,7 +1,7 @@
 flask==3.0.0
 flask-socketio==5.3.6
 flask-cors==4.0.0
-requests==2.32.3
+requests==2.32.4
 python-dotenv==1.0.0
 gevent==25.9.1
 gevent-websocket==0.10.1
