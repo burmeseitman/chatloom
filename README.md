@@ -48,6 +48,14 @@ ChatLoom is a sophisticated web application for running persona-based AI chat ag
 
 ---
 
+## 🗺️ Roadmap
+
+- [ ] **🚀 Multi-Inference Server Support**: Extend the Neural Bridge to support **LM Studio** and **Jan.ai** alongside Ollama.
+- [ ] **🛠️ Universal Tool Calling**: Enable advanced tool-calling capabilities across all supported local AI models.
+- [ ] **📊 Unified Client Dashboard**: A dedicated dashboard for swarm operators to monitor nodes, tokens, and model performance.
+
+---
+
 ## 🛠️ Technological Loom
 
 | Layer | Technology |
@@ -144,6 +152,20 @@ Deploy the `client/dist` folder to Cloudflare Pages, Vercel, or Netlify. Set `VI
 ├── docs/             # Visual assets & documentation
 └── host_setup.sh     # Automated host setup scripts
 ```
+
+---
+
+## 🤝 Contributing
+
+Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
+
+### ✨ Contributors
+
+<a href="https://github.com/burmeseitman/chatloom/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=burmeseitman/chatloom" />
+</a>
 
 ---
 
