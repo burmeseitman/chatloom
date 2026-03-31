@@ -9,10 +9,10 @@ services:
     ports:
       - "5001:5001"
     environment:
-      - CHATLOOM_SECRET_KEY=yoursecretkeyhere
-      - CHATLOOM_EXTRA_ORIGINS=https://your-frontend-on-cloudflare.pages.dev
+      - CHATLOOM_SECRET_KEY=${CHATLOOM_SECRET_KEY}
+      - CHATLOOM_EXTRA_ORIGINS=${CHATLOOM_EXTRA_ORIGINS}
     volumes:
-      - chatloom-db:/app
+      - chatloom-db:/app/chatloom.db
     restart: always
 
   tunnel:
