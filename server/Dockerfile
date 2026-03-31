@@ -11,6 +11,7 @@ ENV FLASK_APP app.py
 WORKDIR /app
 
 # Install system dependencies
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     python3-dev \

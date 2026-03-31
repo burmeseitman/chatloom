@@ -15,5 +15,13 @@ services:
       - chatloom-db:/app
     restart: always
 
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: chatloom-tunnel
+    command: tunnel --no-autoupdate run --token ${CHATLOOM_TUNNEL_TOKEN}
+    restart: always
+    depends_on:
+      - backend
+
 volumes:
   chatloom-db:
