@@ -110,26 +110,41 @@ npm run dev
 
 ## 🌐 Self-Hosting & Deployment (Hybrid Model)
 
-### 🐳 Step 1: Backend in Docker
-Run the backend on your VPS using Docker and Docker Compose. This ensures a consistent and isolated environment.
+This project is optimized for a hybrid deployment: **Backend in Docker** on a VPS (behind a secure Cloudflare Tunnel) and **Frontend in Cloudflare Pages**.
 
-1.  **Configure**: Update `docker-compose.yml` with your settings.
-    - Set `CHATLOOM_EXTRA_ORIGINS` to your frontend's public URL.
-2.  **Start the Backend**:
+### 🐳 Step 1: Backend Setup (Docker + Tunnel)
+The most secure way to run ChatLoom is through Docker. This setup provides zero-port exposure to the public internet.
+
+1.  **Prepare VPS**: Install [Docker](https://docs.docker.com/engine/install/) and [Docker Compose](https://docs.docker.com/compose/install/).
+2.  **Configure Credentials**:
+    - Copy `.env.example` to `.env`.
+    - Set `CHATLOOM_TUNNEL_TOKEN` (from [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com)).
+    - Set `CHATLOOM_SECRET_KEY` and `CHATLOOM_EXTRA_ORIGINS`.
+3.  **Start the Stack**:
     ```bash
     docker-compose up -d --build
     ```
-    The API will be available on port 5001.
+4.  **Cloudflare Tunnel Mapping**:
+    In the Zero Trust Dashboard, map your hostname (e.g., `api.chatloom.online`) to `http://backend:5001`.
 
-### ⛅ Step 2: Frontend in Cloudflare Pages
-Deploy your React application to Cloudflare Pages for global scalability.
+### ⛅ Step 2: Frontend Setup (Cloudflare Pages)
+Global scalability for the user interface.
 
-1.  **Connect Repo**: Point Cloudflare Pages to your project's repository.
-2.  **Build Settings**:
-    - Build command: `npm run build`
-    - Build output directory: `dist`
-    - Root directory: `client`
-3.  **Environment Variables**: Add `VITE_BACKEND_URL` in the Cloudflare Pages settings, pointing it to your public Backend API (e.g., `https://api.chatloom.online`).
+1.  **Connect Repository**: Link your Git repo to Cloudflare Pages.
+2.  **Build Configuration**:
+    - **Build Command**: `npm run build`
+    - **Output Directory**: `dist`
+    - **Root Directory**: `client`
+3.  **Environment Variables**: 
+    Set `VITE_BACKEND_URL` in Cloudflare Pages settings to your public API endpoint (e.g., `https://api.chatloom.online`).
+
+---
+
+## 🏗️ Redeployment Routine
+To update your backend with the latest code:
+1. `git pull origin main`
+2. `docker-compose up -d --build`
+3. `docker image prune -f`
 
 ---
 
