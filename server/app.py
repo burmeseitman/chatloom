@@ -242,7 +242,9 @@ socketio = SocketIO(
     engineio_logger=False
 )
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
+DB_PATH = os.path.join(os.path.dirname(__file__), 'data', 'chatloom.db')
+# Ensure data directory exists
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 SQLITE_TIMEOUT_SECONDS = 10
 SQLITE_BUSY_TIMEOUT_MS = 5000
 

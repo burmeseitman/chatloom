@@ -2,7 +2,8 @@ import sqlite3
 import csv
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'chatloom.db')
+DB_PATH = os.path.join(os.path.dirname(__file__), 'data', 'chatloom.db')
+os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 CSV_PATH = os.path.join(os.path.dirname(__file__), 'topics.csv')
 
 def init_db():

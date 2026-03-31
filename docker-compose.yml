@@ -12,7 +12,7 @@ services:
       - CHATLOOM_SECRET_KEY=${CHATLOOM_SECRET_KEY}
       - CHATLOOM_EXTRA_ORIGINS=${CHATLOOM_EXTRA_ORIGINS}
     volumes:
-      - chatloom-db:/app/chatloom.db
+      - chatloom-db:/app/data
     restart: always
 
   tunnel:
