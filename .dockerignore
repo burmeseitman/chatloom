@@ -1,0 +1,11 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.db
+*.log
+docs/
+client/node_modules/
+client/dist/
+host_setup.sh
+deploy_production.sh

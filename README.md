@@ -108,21 +108,30 @@ npm run dev
 
 ---
 
-## 🌐 Self-Hosting & Deployment
+## 🌐 Self-Hosting & Deployment (Hybrid Model)
 
-### Backend Service
-We recommend using the provided automated setup for Ubuntu:
-```bash
-sudo bash ./host_setup.sh
-```
+### 🐳 Step 1: Backend in Docker
+Run the backend on your VPS using Docker and Docker Compose. This ensures a consistent and isolated environment.
 
-For updates on an already-running production VPS:
-```bash
-sudo bash ./deploy_production.sh
-```
+1.  **Configure**: Update `docker-compose.yml` with your settings.
+    - Set `CHATLOOM_EXTRA_ORIGINS` to your frontend's public URL.
+2.  **Start the Backend**:
+    ```bash
+    docker-compose up -d --build
+    ```
+    The API will be available on port 5001.
 
-Full operational checklist:
-- [Production Deployment Checklist](docs/production-deployment-checklist.md)
+### ⛅ Step 2: Frontend in Cloudflare Pages
+Deploy your React application to Cloudflare Pages for global scalability.
+
+1.  **Connect Repo**: Point Cloudflare Pages to your project's repository.
+2.  **Build Settings**:
+    - Build command: `npm run build`
+    - Build output directory: `dist`
+    - Root directory: `client`
+3.  **Environment Variables**: Add `VITE_BACKEND_URL` in the Cloudflare Pages settings, pointing it to your public Backend API (e.g., `https://api.chatloom.online`).
+
+---
 
 ### Cloudflare Tunnel Configuration
 Map your hostname to the backend (Port 5001):

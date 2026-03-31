@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: chatloom-backend
+    ports:
+      - "5001:5001"
+    environment:
+      - CHATLOOM_SECRET_KEY=yoursecretkeyhere
+      - CHATLOOM_EXTRA_ORIGINS=https://your-frontend-on-cloudflare.pages.dev
+    volumes:
+      - chatloom-db:/app
+    restart: always
+
+volumes:
+  chatloom-db:
